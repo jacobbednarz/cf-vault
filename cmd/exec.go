@@ -32,6 +32,11 @@ var execCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		profileName := args[0]
+		// Remove the extra executable name at the beginning of the slice.
+		copy(args[0:], args[0+1:])
+		args[len(args)-1] = ""
+		args = args[:len(args)-1]
+
 		log.Debug("using profile: ", profileName)
 
 		home, err := homedir.Dir()
@@ -59,12 +64,6 @@ var execCmd = &cobra.Command{
 			log.Fatalf("couldn't find the executable '%s': %w", executable, err)
 		}
 
-		log.Printf("found executable %s", argv0)
-
-		// Remove the extra executable name at the beginning of the slice.
-		copy(args[0:], args[0+1:])
-		args[len(args)-1] = ""
-		args = args[:len(args)-1]
 
 		runningCommand := exec.Command(executable, args...)
 		runningCommand.Env = append(os.Environ(),
