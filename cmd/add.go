@@ -19,6 +19,11 @@ var addCmd = &cobra.Command{
 	Use:   "add [profile]",
 	Short: "Add a new profile to your configuration and keychain",
 	Long:  "",
+	Example: `
+  Add a new profile (you will be prompted for credentials)
+
+    $ cf-vault add example-profile
+`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errors.New("requires a profile argument")

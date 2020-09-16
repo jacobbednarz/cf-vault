@@ -20,6 +20,22 @@ var execCmd = &cobra.Command{
 	Use:   "exec [profile]",
 	Short: "Execute a command with Cloudflare credentials populated",
 	Long:  "",
+	Example: `
+  Execute a single command with credentials populated
+
+    $ cf-vault exec example-profile -- env | grep -i cloudflare
+    CLOUDFLARE_VAULT_SESSION=example-profile
+    CLOUDFLARE_EMAIL=jacob@example.com
+    CLOUDFLARE_API_KEY=s3cr3t
+
+  Spawn a new shell with credentials populated
+
+    $ cf-vault exec example-profile --
+    $ env | grep -i cloudflare
+    CLOUDFLARE_VAULT_SESSION=example-profile
+    CLOUDFLARE_EMAIL=jacob@example.com
+    CLOUDFLARE_API_KEY=s3cr3t
+`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errors.New("requires a profile argument")
