@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -11,15 +12,16 @@ import (
 // versioning strings.
 var Rev = "0.0.0-dev"
 
-func init() {
-	rootCmd.AddCommand(versionCmd)
-}
-
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version string of cf-vault",
+	Short: fmt.Sprintf("Print the version string of %s", projectName),
 	Long:  "",
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if verbose {
+			log.SetLevel(log.DebugLevel)
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("%s %s (%s,%s-%s)", "cf-vault", Rev, runtime.Version(), runtime.Compiler, runtime.GOARCH)
+		fmt.Printf("%s %s (%s,%s-%s)", projectName, Rev, runtime.Version(), runtime.Compiler, runtime.GOARCH)
 	},
 }
