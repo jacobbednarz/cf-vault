@@ -55,15 +55,12 @@ var execCmd = &cobra.Command{
 
 		i, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
 
-		fmt.Printf("%v", string(i.Data))
-
-		log.Debug("environment is populated with credentials")
-
 		command := exec.Command(args[1])
 		command.Env = append(os.Environ(),
 			fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profileSection.Key("email").String()),
 			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profileSection.Key("auth_type").String()), string(i.Data)),
 		)
+		log.Debug("environment is populated with credentials")
 		commandOutput := &bytes.Buffer{}
 		command.Stdout = commandOutput
 		err = command.Run()
