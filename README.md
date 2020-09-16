@@ -13,6 +13,10 @@ To achieve this, `cf-vault` uses the concept of profiles with associated scopes
 to either generate short lived API tokens or retrieve the API key from secure
 storage (such as Mac OS keychain).
 
+## Demo
+
+[![asciicast](https://asciinema.org/a/ukBkHKuITQRVAjEkKcRzz5Ryp.svg)](https://asciinema.org/a/ukBkHKuITQRVAjEkKcRzz5Ryp)
+
 ## Usage
 
 `cf-vault` allows you to manage your Cloudflare credentials in a safe place and
