@@ -53,7 +53,7 @@ var execCmd = &cobra.Command{
 			ServiceName: projectName,
 		})
 
-		i, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
+		keychain, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
 
 		command := strings.Split(args[1], " ")
 		executable := command[0]
@@ -72,7 +72,7 @@ var execCmd = &cobra.Command{
 		runningCommand := exec.Command(executable, args...)
 		runningCommand.Env = append(os.Environ(),
 			fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profileSection.Key("email").String()),
-			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profileSection.Key("auth_type").String()), string(i.Data)),
+			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profileSection.Key("auth_type").String()), string(keychain.Data)),
 		)
 		stdoutStderr, err := runningCommand.CombinedOutput()
 
