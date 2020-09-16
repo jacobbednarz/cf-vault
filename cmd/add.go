@@ -19,6 +19,11 @@ var addCmd = &cobra.Command{
 	Use:   "add [profile]",
 	Short: "Add a new profile to your configuration and keychain",
 	Long:  "",
+	Example: `
+  Add a new profile (you will be prompted for credentials)
+
+    $ cf-vault add example-profile
+`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errors.New("requires a profile argument")
@@ -65,11 +70,7 @@ var addCmd = &cobra.Command{
 		cfg.Section(fmt.Sprintf("profile %s", profileName)).NewKey("auth_type", authType)
 		cfg.SaveTo(home + defaultFullConfigPath)
 
-		ring, _ := keyring.Open(keyring.Config{
-			FileDir:      "~/.cf-vault/keys/",
-			ServiceName:  projectName,
-			KeychainName: projectName,
-		})
+		ring, _ := keyring.Open(keyringDefaults)
 
 		_ = ring.Set(keyring.Item{
 			Key:  fmt.Sprintf("%s-%s", profileName, authType),

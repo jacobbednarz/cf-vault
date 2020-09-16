@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"os/exec"
 
@@ -19,6 +20,22 @@ var execCmd = &cobra.Command{
 	Use:   "exec [profile]",
 	Short: "Execute a command with Cloudflare credentials populated",
 	Long:  "",
+	Example: `
+  Execute a single command with credentials populated
+
+    $ cf-vault exec example-profile -- env | grep -i cloudflare
+    CLOUDFLARE_VAULT_SESSION=example-profile
+    CLOUDFLARE_EMAIL=jacob@example.com
+    CLOUDFLARE_API_KEY=s3cr3t
+
+  Spawn a new shell with credentials populated
+
+    $ cf-vault exec example-profile --
+    $ env | grep -i cloudflare
+    CLOUDFLARE_VAULT_SESSION=example-profile
+    CLOUDFLARE_EMAIL=jacob@example.com
+    CLOUDFLARE_API_KEY=s3cr3t
+`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errors.New("requires a profile argument")
@@ -32,6 +49,11 @@ var execCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		profileName := args[0]
+		// Remove the extra executable name at the beginning of the slice.
+		copy(args[0:], args[0+1:])
+		args[len(args)-1] = ""
+		args = args[:len(args)-1]
+
 		log.Debug("using profile: ", profileName)
 
 		home, err := homedir.Dir()
@@ -45,42 +67,40 @@ var execCmd = &cobra.Command{
 		}
 
 		if profileSection.Key("email").String() == "" {
-			log.Fatal(fmt.Sprintf("no profile matching %q found in the configuration file at %s", profileName, defaultFullConfigPath))
+			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, defaultFullConfigPath)
 		}
 
-		ring, _ := keyring.Open(keyring.Config{
-			FileDir:      "~/.cf-vault/keys/",
-			ServiceName:  projectName,
-			KeychainName: projectName,
-		})
+		// Don't allow nesting of cf-vault sessions, it gets messy.
+		if os.Getenv("CLOUDFLARE_VAULT_SESSION") != "" {
+			log.Fatal("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
+		}
 
+		ring, _ := keyring.Open(keyringDefaults)
 		keychain, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
 
-		command := strings.Split(args[1], " ")
-		executable := command[0]
-		argv0, err := exec.LookPath(executable)
-		if err != nil {
-			log.Fatalf("couldn't find the executable '%s': %w", executable, err)
-		}
-
-		log.Printf("found executable %s", argv0)
-
-		// Remove the extra executable name at the beginning of the slice.
-		copy(args[0:], args[0+1:])
-		args[len(args)-1] = ""
-		args = args[:len(args)-1]
-
-		runningCommand := exec.Command(executable, args...)
-		runningCommand.Env = append(os.Environ(),
+		cloudflareCreds := []string{
+			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName),
 			fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profileSection.Key("email").String()),
 			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profileSection.Key("auth_type").String()), string(keychain.Data)),
-		)
-		stdoutStderr, err := runningCommand.CombinedOutput()
-
-		if err != nil {
-			log.Fatal(err)
 		}
 
-		fmt.Printf("%s\n", stdoutStderr)
+		// Should a command not be provided, drop into a fresh shell with the
+		// credentials populated alongside the existing env.
+		if len(args) == 0 {
+			log.Debug("launching new shell with credentials populated")
+			envVars := append(syscall.Environ(), cloudflareCreds...)
+			syscall.Exec(os.Getenv("SHELL"), []string{os.Getenv("SHELL")}, envVars)
+		}
+
+		executable := args[0]
+		pathtoExec, err := exec.LookPath(executable)
+		if err != nil {
+			log.Fatalf("couldn't find the executable '%s': %w", pathtoExec, err)
+		}
+
+		log.Debugf("found executable %s", pathtoExec)
+		log.Debugf("executing command: %s", strings.Join(args, " "))
+
+		syscall.Exec(pathtoExec, args, cloudflareCreds)
 	},
 }

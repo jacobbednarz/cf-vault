@@ -28,6 +28,22 @@ $ env | grep -i cloudflare
 # => no results
 
 $ cf-vault exec work -- env | grep -i cloudflare
+CLOUDFLARE_VAULT_SESSION=work
 CLOUDFLARE_EMAIL=jacob@example.com
 CLOUDFLARE_API_KEY=s3cr3t
+```
+
+If you don't provide a command, you will be dropped into a new shell with the
+credentials populated.
+
+```shell
+$ cf-vault exec work
+$ env | grep -i cloudflare
+CLOUDFLARE_VAULT_SESSION=work
+CLOUDFLARE_EMAIL=jacob@example.com
+CLOUDFLARE_API_KEY=s3cr3t
+
+$ exit
+$ env | grep -i cloudflare
+# => no results
 ```
