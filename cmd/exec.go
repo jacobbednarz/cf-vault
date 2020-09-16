@@ -53,9 +53,6 @@ var execCmd = &cobra.Command{
 			log.Fatal(fmt.Sprintf("no profile matching %q found in the configuration file at %s", profileName, defaultFullConfigPath))
 		}
 
-		ring, _ := keyring.Open(keyringDefaults)
-
-		keychain, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
 
 		command := strings.Split(args[1], " ")
 		executable := command[0]
@@ -64,6 +61,8 @@ var execCmd = &cobra.Command{
 			log.Fatalf("couldn't find the executable '%s': %w", executable, err)
 		}
 
+		ring, _ := keyring.Open(keyringDefaults)
+		keychain, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
 
 		runningCommand := exec.Command(executable, args...)
 		runningCommand.Env = append(os.Environ(),
