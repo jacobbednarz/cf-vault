@@ -66,8 +66,9 @@ var addCmd = &cobra.Command{
 		cfg.SaveTo(home + defaultFullConfigPath)
 
 		ring, _ := keyring.Open(keyring.Config{
-			FileDir:     "~/.cf-vault/keys/",
-			ServiceName: projectName,
+			FileDir:      "~/.cf-vault/keys/",
+			ServiceName:  projectName,
+			KeychainName: projectName,
 		})
 
 		_ = ring.Set(keyring.Item{
