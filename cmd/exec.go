@@ -49,8 +49,9 @@ var execCmd = &cobra.Command{
 		}
 
 		ring, _ := keyring.Open(keyring.Config{
-			FileDir:     "~/.cf-vault/keys/",
-			ServiceName: projectName,
+			FileDir:      "~/.cf-vault/keys/",
+			ServiceName:  projectName,
+			KeychainName: projectName,
 		})
 
 		keychain, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
