@@ -48,11 +48,7 @@ var execCmd = &cobra.Command{
 			log.Fatal(fmt.Sprintf("no profile matching %q found in the configuration file at %s", profileName, defaultFullConfigPath))
 		}
 
-		ring, _ := keyring.Open(keyring.Config{
-			FileDir:      "~/.cf-vault/keys/",
-			ServiceName:  projectName,
-			KeychainName: projectName,
-		})
+		ring, _ := keyring.Open(keyringDefaults)
 
 		keychain, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
 

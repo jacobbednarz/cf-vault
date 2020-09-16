@@ -1,16 +1,31 @@
 package cmd
 
 import (
+	"fmt"
+
+	"github.com/99designs/keyring"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 var (
-	verbose                bool
-	projectName            = "cf-vault"
-	defaultConfigDirectory = "/." + projectName
-	defaultFullConfigPath  = defaultConfigDirectory + "/config"
+	verbose                  bool
+	projectName              = "cf-vault"
+	projectNameWithoutHyphen = "cfvault"
+	defaultConfigDirectory   = "/." + projectName
+	defaultFullConfigPath    = defaultConfigDirectory + "/config"
 )
+
+var keyringDefaults = keyring.Config{
+	FileDir:                  fmt.Sprintf("~/.%s/keys/", projectName),
+	ServiceName:              projectName,
+	KeychainName:             projectName,
+	LibSecretCollectionName:  projectNameWithoutHyphen,
+	KWalletAppID:             projectName,
+	KWalletFolder:            projectName,
+	KeychainTrustApplication: true,
+	WinCredPrefix:            projectName,
+}
 
 var rootCmd = &cobra.Command{
 	Use:  projectName,

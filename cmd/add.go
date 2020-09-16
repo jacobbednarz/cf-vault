@@ -65,11 +65,7 @@ var addCmd = &cobra.Command{
 		cfg.Section(fmt.Sprintf("profile %s", profileName)).NewKey("auth_type", authType)
 		cfg.SaveTo(home + defaultFullConfigPath)
 
-		ring, _ := keyring.Open(keyring.Config{
-			FileDir:      "~/.cf-vault/keys/",
-			ServiceName:  projectName,
-			KeychainName: projectName,
-		})
+		ring, _ := keyring.Open(keyringDefaults)
 
 		_ = ring.Set(keyring.Item{
 			Key:  fmt.Sprintf("%s-%s", profileName, authType),
