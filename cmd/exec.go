@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
+
+	"os/exec"
 
 	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
@@ -55,18 +55,31 @@ var execCmd = &cobra.Command{
 
 		i, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
 
-		command := exec.Command(args[1])
-		command.Env = append(os.Environ(),
+		command := strings.Split(args[1], " ")
+		executable := command[0]
+		argv0, err := exec.LookPath(executable)
+		if err != nil {
+			log.Fatalf("couldn't find the executable '%s': %w", executable, err)
+		}
+
+		log.Printf("found executable %s", argv0)
+
+		// Remove the extra executable name at the beginning of the slice.
+		copy(args[0:], args[0+1:])
+		args[len(args)-1] = ""
+		args = args[:len(args)-1]
+
+		runningCommand := exec.Command(executable, args...)
+		runningCommand.Env = append(os.Environ(),
 			fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profileSection.Key("email").String()),
 			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profileSection.Key("auth_type").String()), string(i.Data)),
 		)
-		log.Debug("environment is populated with credentials")
-		commandOutput := &bytes.Buffer{}
-		command.Stdout = commandOutput
-		err = command.Run()
+		stdoutStderr, err := runningCommand.CombinedOutput()
+
 		if err != nil {
-			os.Stderr.WriteString(err.Error())
+			log.Fatal(err)
 		}
-		fmt.Print(string(commandOutput.Bytes()))
+
+		fmt.Printf("%s\n", stdoutStderr)
 	},
 }
