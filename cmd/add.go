@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -43,13 +44,14 @@ var addCmd = &cobra.Command{
 		emailAddress, _ := reader.ReadString('\n')
 		emailAddress = strings.TrimSpace(emailAddress)
 
-		fmt.Print("Authentication type (api_token or api_key): ")
-		authType, _ := reader.ReadString('\n')
-		authType = strings.TrimSpace(authType)
-
-		fmt.Print("Authentication value: ")
+		fmt.Print("Authentication value (API key or API token): ")
 		authValue, _ := reader.ReadString('\n')
 		authValue = strings.TrimSpace(authValue)
+
+		authType, err := determineAuthType(authValue)
+		if err != nil {
+			log.Fatalf("failed to detect authentication type: %s", err)
+		}
 
 		home, err := homedir.Dir()
 		if err != nil {
@@ -77,4 +79,14 @@ var addCmd = &cobra.Command{
 			Data: []byte(authValue),
 		})
 	},
+}
+
+func determineAuthType(s string) (string, error) {
+	if apiTokenMatch, _ := regexp.MatchString("[A-Za-z0-9-_]{40}", s); apiTokenMatch {
+		return "api_token", nil
+	} else if apiKeyMatch, _ := regexp.MatchString("[0-9a-f]{37}", s); apiKeyMatch {
+		return "api_key", nil
+	} else {
+		return "", errors.New("invalid API token or API key format")
+	}
 }
