@@ -17,6 +17,13 @@ storage (such as Mac OS keychain).
 
 [![asciicast](https://asciinema.org/a/ukBkHKuITQRVAjEkKcRzz5Ryp.svg)](https://asciinema.org/a/ukBkHKuITQRVAjEkKcRzz5Ryp)
 
+## Install
+
+```
+$ brew tap jacobbednarz/cf-vault
+$ brew cask install jacobbednarz/cf-vault/cf-vault
+```
+
 ## Usage
 
 `cf-vault` allows you to manage your Cloudflare credentials in a safe place and
