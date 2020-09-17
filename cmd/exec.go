@@ -75,8 +75,15 @@ var execCmd = &cobra.Command{
 			log.Fatal("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
 		}
 
-		ring, _ := keyring.Open(keyringDefaults)
-		keychain, _ := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
+		ring, err := keyring.Open(keyringDefaults)
+		if err != nil {
+			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+		}
+
+		keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
+		if err != nil {
+			log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
+		}
 
 		cloudflareCreds := []string{
 			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName),
