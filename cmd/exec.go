@@ -102,7 +102,7 @@ var execCmd = &cobra.Command{
 		executable := args[0]
 		pathtoExec, err := exec.LookPath(executable)
 		if err != nil {
-			log.Fatalf("couldn't find the executable '%s': %w", pathtoExec, err)
+			log.Fatalf("couldn't find the executable '%s': %s", pathtoExec, err.Error())
 		}
 
 		log.Debugf("found executable %s", pathtoExec)
