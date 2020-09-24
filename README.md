@@ -15,7 +15,8 @@ storage (such as Mac OS keychain).
 
 ## Demo
 
-[![asciicast](https://asciinema.org/a/ukBkHKuITQRVAjEkKcRzz5Ryp.svg)](https://asciinema.org/a/ukBkHKuITQRVAjEkKcRzz5Ryp)
+![demo](https://user-images.githubusercontent.com/283234/94203859-8c2d8680-ff03-11ea-8cd6-21161224c2ff.gif)
+
 
 ## Install
 
