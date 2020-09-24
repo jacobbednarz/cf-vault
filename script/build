@@ -24,35 +24,42 @@ do
   platform_split=(${platform//\// })
   GOOS=${platform_split[0]}
   GOARCH=${platform_split[1]}
+
+  mkdir -p "build/${GOOS}"
+
   output_name="cf-vault_${version}_${GOOS}_${GOARCH}"
 
   printf "==> Building %s\t%s\n" "$platform" "build/$output_name" | expand -t 30
 
 
   if [ $GOOS = "windows" ]; then
-    env GOOS=$GOOS GOARCH=$GOARCH go build -o "build/${output_name}.exe" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
+    env GOOS=$GOOS GOARCH=$GOARCH go build -o "build/${GOOS}/cf-vault.exe" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
   else
-    env GOOS=$GOOS GOARCH=$GOARCH go build -o "build/${output_name}" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
+    env GOOS=$GOOS GOARCH=$GOARCH go build -o "build/${GOOS}/cf-vault" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
   fi
   if [ $? -ne 0 ]; then
     echo "Building the binary has failed!"
     exit 1
   fi
 
+  touch build/checksums.txt
+
   printf "==> Tarballing %s\t%s\n" "$platform" "build/${output_name}.tar.gz" | expand -t 30
   if [ $GOOS = "windows" ]; then
-    tar -czf "build/${output_name}.tar.gz" -C "build" "${output_name}.exe"
+    tar -czf "build/${output_name}.tar.gz" -C "build/$GOOS" "cf-vault.exe"
   else
-    tar -czf "build/${output_name}.tar.gz" -C "build" "${output_name}"
+    tar -czf "build/${output_name}.tar.gz" -C "build/$GOOS" "cf-vault"
   fi
 
   if [ $? -ne 0 ]; then
     echo "Creating the tarball has failed!"
     exit 1
   fi
+
+  echo "==> Adding file checksums to build/checksums.txt"
+  shasum -a 256 build/$GOOS/* >> "build/checksums.txt"
 done
 
-echo "==> Generating file checksums to build/checksums.txt"
-shasum -a 256 build/* > "build/checksums.txt"
+shasum -a 256 build/*.tar.gz >> "build/checksums.txt"
 
 echo "==> Build process complete"
