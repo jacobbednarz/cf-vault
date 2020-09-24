@@ -63,7 +63,7 @@ var execCmd = &cobra.Command{
 		cfg, err := ini.Load(home + defaultFullConfigPath)
 		profileSection, err := cfg.GetSection("profile " + profileName)
 		if err != nil {
-			log.Fatal("unable to create profile section: ", err)
+			log.Fatal("unable to find profile: ", err)
 		}
 
 		if profileSection.Key("email").String() == "" {
