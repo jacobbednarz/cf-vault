@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/99designs/keyring"
 	log "github.com/sirupsen/logrus"
@@ -33,6 +34,11 @@ var rootCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			log.SetLevel(log.DebugLevel)
+		}
+
+		if len(args) == 0 {
+			cmd.Help()
+			os.Exit(0)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {},
