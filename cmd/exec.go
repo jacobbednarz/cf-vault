@@ -60,7 +60,12 @@ var execCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("unable to find home directory: ", err)
 		}
+
 		cfg, err := ini.Load(home + defaultFullConfigPath)
+		if err != nil {
+			log.Fatal("unable to use configuration file: ", err)
+		}
+
 		profileSection, err := cfg.GetSection("profile " + profileName)
 		if err != nil {
 			log.Fatal("unable to find profile: ", err)
