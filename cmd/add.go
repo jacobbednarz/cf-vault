@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
@@ -45,10 +46,13 @@ var addCmd = &cobra.Command{
 		emailAddress = strings.TrimSpace(emailAddress)
 
 		fmt.Print("Authentication value (API key or API token): ")
-		authValue, _ := reader.ReadString('\n')
-		authValue = strings.TrimSpace(authValue)
+		byteAuthValue, err := terminal.ReadPassword(0)
+		if err != nil {
+			log.Fatalf("\nunable to read authentication value: %s", err)
+		}
+		authValue := string(byteAuthValue)
 
-		authType, err := determineAuthType(authValue)
+		authType, err := determineAuthType(strings.TrimSpace(authValue))
 		if err != nil {
 			log.Fatalf("failed to detect authentication type: %s", err)
 		}
@@ -78,13 +82,17 @@ var addCmd = &cobra.Command{
 			Key:  fmt.Sprintf("%s-%s", profileName, authType),
 			Data: []byte(authValue),
 		})
+
+		fmt.Print("Done! Credentials have been set and are now ready for use!")
 	},
 }
 
 func determineAuthType(s string) (string, error) {
 	if apiTokenMatch, _ := regexp.MatchString("[A-Za-z0-9-_]{40}", s); apiTokenMatch {
+		log.Debug("API token detected")
 		return "api_token", nil
 	} else if apiKeyMatch, _ := regexp.MatchString("[0-9a-f]{37}", s); apiKeyMatch {
+		log.Debug("API key detected")
 		return "api_key", nil
 	} else {
 		return "", errors.New("invalid API token or API key format")
