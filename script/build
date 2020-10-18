@@ -31,11 +31,13 @@ do
 
   printf "==> Building %s\t%s\n" "$platform" "build/$output_name" | expand -t 30
 
+  # trim GOPATH from the stacktraces
+  GCFLAGS="-gcflags=all=-trimpath=$GOPATH -asmflags=all=-trimpath=$GOPATH"
 
   if [ $GOOS = "windows" ]; then
-    env GOOS=$GOOS GOARCH=$GOARCH go build -o "build/${GOOS}/cf-vault.exe" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
+    env GOOS=$GOOS GOARCH=$GOARCH go build $GCFLAGS -o "build/${GOOS}/cf-vault.exe" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
   else
-    env GOOS=$GOOS GOARCH=$GOARCH go build -o "build/${GOOS}/cf-vault" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
+    env GOOS=$GOOS GOARCH=$GOARCH go build $GCFLAGS -o "build/${GOOS}/cf-vault" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
   fi
   if [ $? -ne 0 ]; then
     echo "Building the binary has failed!"
