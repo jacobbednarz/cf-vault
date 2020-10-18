@@ -83,7 +83,7 @@ var addCmd = &cobra.Command{
 			Data: []byte(authValue),
 		})
 
-		fmt.Print("Done! Credentials have been set and are now ready for use!")
+		fmt.Print("\nDone! Credentials have been set and are now ready for use!")
 	},
 }
 
