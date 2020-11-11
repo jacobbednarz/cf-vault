@@ -7,10 +7,12 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"os/exec"
 
 	"github.com/99designs/keyring"
+	"github.com/cloudflare/cloudflare-go"
 	"github.com/mitchellh/go-homedir"
 	"github.com/pelletier/go-toml"
 	log "github.com/sirupsen/logrus"
@@ -67,13 +69,13 @@ var execCmd = &cobra.Command{
 			log.Fatal("unable to find home directory: ", err)
 		}
 
-		configFileContents, err := ioutil.ReadFile(home + defaultFullConfigPath)
-		if err != nil {
-			log.Fatal(err)
-		}
+		configData, err := ioutil.ReadFile(home + defaultFullConfigPath)
 
 		config := tomlConfig{}
-		toml.Unmarshal(configFileContents, &config)
+		err = toml.Unmarshal(configData, &config)
+		if err != nil {
+			fmt.Println(err)
+		}
 
 		if _, ok := config.Profiles[profileName]; !ok {
 			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, home+defaultFullConfigPath)
@@ -92,9 +94,71 @@ var execCmd = &cobra.Command{
 		}
 
 		cloudflareCreds := []string{
-			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName),
-			fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email),
-			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profile.AuthType), string(keychain.Data)),
+			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName)
+		}
+
+		// Not using short lived tokens so set the static API token or API key.
+		if profile.SessionDuration == 0 {
+			if profile.AuthType == "api_token" {
+				cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email))
+			}
+			cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profile.AuthType), string(keychain.Data)))
+		} else {
+			var api *cloudflare.API
+			if profile.AuthType == "api_token" {
+				api, err = cloudflare.NewWithAPIToken(string(keychain.Data))
+				if err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				api, err = cloudflare.New(string(keychain.Data), profile.Email)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+
+			resources := make(map[string]interface{})
+			for _, tomlResources := range profile.Resources {
+				for k, v := range tomlResources {
+					resources[k] = v
+				}
+			}
+
+			permissionGroups := []cloudflare.APITokenPermissionGroups{}
+			for _, permissionGroupID := range profile.PermissionGroupIDs {
+				permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{ID: permissionGroupID})
+			}
+
+			now, _ := time.Parse(time.RFC3339, time.Now().UTC().Format(time.RFC3339))
+			tokenExpiry := now.Add(time.Minute * time.Duration(profile.SessionDuration))
+			token := cloudflare.APIToken{
+				Name:      fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix()),
+				NotBefore: &now,
+				ExpiresOn: &tokenExpiry,
+				Policies: []cloudflare.APITokenPolicies{{
+					Effect:           "allow",
+					Resources:        resources,
+					PermissionGroups: permissionGroups,
+				}},
+				Condition: &cloudflare.APITokenCondition{
+					RequestIP: &cloudflare.APITokenRequestIPCondition{
+						In:    []string{},
+						NotIn: []string{},
+					},
+				},
+			}
+
+			shortLivedToken, err := api.CreateAPIToken(token)
+			if err != nil {
+				log.Fatalf("failed to create API token: %s", err)
+			}
+
+			if shortLivedToken.Value != "" {
+				cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_API_TOKEN=%s", shortLivedToken.Value))
+			}
+
+			cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_SESSION_DURATION=%d", profile.SessionDuration))
+			cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_SESSION_EXPIRY=%d", tokenExpiry.Unix()))
 		}
 
 		// Should a command not be provided, drop into a fresh shell with the
