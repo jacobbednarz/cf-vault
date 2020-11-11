@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"syscall"
@@ -11,9 +12,9 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
+	"github.com/pelletier/go-toml"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"gopkg.in/ini.v1"
 )
 
 var execCmd = &cobra.Command{
@@ -54,6 +55,11 @@ var execCmd = &cobra.Command{
 		args[len(args)-1] = ""
 		args = args[:len(args)-1]
 
+		// Don't allow nesting of cf-vault sessions, it gets messy.
+		if os.Getenv("CLOUDFLARE_VAULT_SESSION") != "" {
+			log.Fatal("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
+		}
+
 		log.Debug("using profile: ", profileName)
 
 		home, err := homedir.Dir()
@@ -61,39 +67,34 @@ var execCmd = &cobra.Command{
 			log.Fatal("unable to find home directory: ", err)
 		}
 
-		cfg, err := ini.Load(home + defaultFullConfigPath)
+		configFileContents, err := ioutil.ReadFile(home + defaultFullConfigPath)
 		if err != nil {
-			log.Fatal("unable to use configuration file: ", err)
+			log.Fatal(err)
 		}
 
-		profileSection, err := cfg.GetSection("profile " + profileName)
-		if err != nil {
-			log.Fatal("unable to find profile: ", err)
+		config := tomlConfig{}
+		toml.Unmarshal(configFileContents, &config)
+
+		if _, ok := config.Profiles[profileName]; !ok {
+			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, home+defaultFullConfigPath)
 		}
 
-		if profileSection.Key("email").String() == "" {
-			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, defaultFullConfigPath)
-		}
-
-		// Don't allow nesting of cf-vault sessions, it gets messy.
-		if os.Getenv("CLOUDFLARE_VAULT_SESSION") != "" {
-			log.Fatal("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
-		}
+		profile := config.Profiles[profileName]
 
 		ring, err := keyring.Open(keyringDefaults)
 		if err != nil {
 			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
 		}
 
-		keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profileSection.Key("auth_type").String()))
+		keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profile.AuthType))
 		if err != nil {
 			log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
 		}
 
 		cloudflareCreds := []string{
 			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName),
-			fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profileSection.Key("email").String()),
-			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profileSection.Key("auth_type").String()), string(keychain.Data)),
+			fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email),
+			fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profile.AuthType), string(keychain.Data)),
 		}
 
 		// Should a command not be provided, drop into a fresh shell with the

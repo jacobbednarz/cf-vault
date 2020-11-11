@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -14,8 +15,18 @@ import (
 	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
-	"gopkg.in/ini.v1"
+
+	"github.com/pelletier/go-toml"
 )
+
+type tomlConfig struct {
+	Profiles map[string]profile `toml:"profiles"`
+}
+
+type profile struct {
+	Email    string `toml:"email"`
+	AuthType string `toml:"auth_type"`
+}
 
 var addCmd = &cobra.Command{
 	Use:   "add [profile]",
@@ -71,10 +82,32 @@ var addCmd = &cobra.Command{
 			defer file.Close()
 		}
 
-		cfg, _ := ini.Load(home + defaultFullConfigPath)
-		cfg.Section(fmt.Sprintf("profile %s", profileName)).NewKey("email", emailAddress)
-		cfg.Section(fmt.Sprintf("profile %s", profileName)).NewKey("auth_type", authType)
-		cfg.SaveTo(home + defaultFullConfigPath)
+		existingConfigFileContents, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		tomlConfigStruct := tomlConfig{}
+		toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct)
+
+		// If this is the first profile, initialise the map.
+		if len(tomlConfigStruct.Profiles) == 0 {
+			tomlConfigStruct.Profiles = make(map[string]profile)
+		}
+
+		tomlConfigStruct.Profiles[profileName] = profile{
+			Email:    emailAddress,
+			AuthType: authType,
+		}
+
+		configFile, err := os.OpenFile(home+defaultFullConfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
+		if err != nil {
+			log.Fatalf("failed to open file at %s", home+defaultFullConfigPath)
+		}
+		defer configFile.Close()
+		if err := toml.NewEncoder(configFile).Indentation("").Encode(tomlConfigStruct); err != nil {
+			log.Fatal(err)
+		}
 
 		ring, _ := keyring.Open(keyringDefaults)
 
@@ -83,7 +116,7 @@ var addCmd = &cobra.Command{
 			Data: []byte(authValue),
 		})
 
-		fmt.Print("\nDone! Credentials have been set and are now ready for use!")
+		fmt.Println("Success! Credentials have been set and are now ready for use!")
 	},
 }
 
