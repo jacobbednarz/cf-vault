@@ -14,7 +14,7 @@ var (
 	projectName              = "cf-vault"
 	projectNameWithoutHyphen = "cfvault"
 	defaultConfigDirectory   = "/." + projectName
-	defaultFullConfigPath    = defaultConfigDirectory + "/config"
+	defaultFullConfigPath    = defaultConfigDirectory + "/config.toml"
 )
 
 var keyringDefaults = keyring.Config{
