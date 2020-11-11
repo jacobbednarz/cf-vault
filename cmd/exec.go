@@ -94,7 +94,7 @@ var execCmd = &cobra.Command{
 		}
 
 		cloudflareCreds := []string{
-			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName)
+			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName),
 		}
 
 		// Not using short lived tokens so set the static API token or API key.
