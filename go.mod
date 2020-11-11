@@ -3,7 +3,7 @@ module github.com/jacobbednarz/cf-vault
 go 1.15
 
 require (
-	github.com/99designs/keyring v1.1.5
+	github.com/99designs/keyring v1.1.6
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pelletier/go-toml v1.8.2-0.20201011232708-5b4e7e5dcc56
 	github.com/sirupsen/logrus v1.2.0
