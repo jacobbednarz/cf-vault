@@ -70,11 +70,14 @@ var execCmd = &cobra.Command{
 		}
 
 		configData, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		config := tomlConfig{}
 		err = toml.Unmarshal(configData, &config)
 		if err != nil {
-			fmt.Println(err)
+			log.Fatal(err)
 		}
 
 		if _, ok := config.Profiles[profileName]; !ok {
@@ -93,16 +96,16 @@ var execCmd = &cobra.Command{
 			log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
 		}
 
-		cloudflareCreds := []string{
+		cloudflareEnvironment := []string{
 			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName),
 		}
 
 		// Not using short lived tokens so set the static API token or API key.
 		if profile.SessionDuration == 0 {
 			if profile.AuthType == "api_token" {
-				cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email))
+				cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email))
 			}
-			cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profile.AuthType), string(keychain.Data)))
+			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profile.AuthType), string(keychain.Data)))
 		} else {
 			var api *cloudflare.API
 			if profile.AuthType == "api_token" {
@@ -154,18 +157,18 @@ var execCmd = &cobra.Command{
 			}
 
 			if shortLivedToken.Value != "" {
-				cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_API_TOKEN=%s", shortLivedToken.Value))
+				cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_API_TOKEN=%s", shortLivedToken.Value))
 			}
 
-			cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_SESSION_DURATION=%d", profile.SessionDuration))
-			cloudflareCreds = append(cloudflareCreds, fmt.Sprintf("CLOUDFLARE_SESSION_EXPIRY=%d", tokenExpiry.Unix()))
+			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_SESSION_DURATION=%d", profile.SessionDuration))
+			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_SESSION_EXPIRY=%d", tokenExpiry.Unix()))
 		}
 
 		// Should a command not be provided, drop into a fresh shell with the
 		// credentials populated alongside the existing env.
 		if len(args) == 0 {
 			log.Debug("launching new shell with credentials populated")
-			envVars := append(syscall.Environ(), cloudflareCreds...)
+			envVars := append(syscall.Environ(), cloudflareEnvironment...)
 			syscall.Exec(os.Getenv("SHELL"), []string{os.Getenv("SHELL")}, envVars)
 		}
 
@@ -178,6 +181,6 @@ var execCmd = &cobra.Command{
 		log.Debugf("found executable %s", pathtoExec)
 		log.Debugf("executing command: %s", strings.Join(args, " "))
 
-		syscall.Exec(pathtoExec, args, cloudflareCreds)
+		syscall.Exec(pathtoExec, args, cloudflareEnvironment)
 	},
 }
