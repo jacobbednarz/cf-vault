@@ -24,11 +24,11 @@ type tomlConfig struct {
 }
 
 type profile struct {
-	Email              string              `toml:"email"`
-	AuthType           string              `toml:"auth_type"`
-	SessionDuration    int                 `toml:"session_duration"`
-	Resources          []map[string]string `toml:"resources,omitempty"`
-	PermissionGroupIDs []string            `toml:"permission_group_ids,omitempty"`
+	Email              string                 `toml:"email"`
+	AuthType           string                 `toml:"auth_type"`
+	SessionDuration    int                    `toml:"session_duration"`
+	Resources          map[string]interface{} `toml:"resources,omitempty"`
+	PermissionGroupIDs []string               `toml:"permission_group_ids,omitempty"`
 }
 
 var addCmd = &cobra.Command{

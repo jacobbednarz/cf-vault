@@ -120,13 +120,6 @@ var execCmd = &cobra.Command{
 				}
 			}
 
-			resources := make(map[string]interface{})
-			for _, tomlResources := range profile.Resources {
-				for k, v := range tomlResources {
-					resources[k] = v
-				}
-			}
-
 			permissionGroups := []cloudflare.APITokenPermissionGroups{}
 			for _, permissionGroupID := range profile.PermissionGroupIDs {
 				permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{ID: permissionGroupID})
@@ -140,7 +133,7 @@ var execCmd = &cobra.Command{
 				ExpiresOn: &tokenExpiry,
 				Policies: []cloudflare.APITokenPolicies{{
 					Effect:           "allow",
-					Resources:        resources,
+					Resources:        profile.Resources,
 					PermissionGroups: permissionGroups,
 				}},
 				Condition: &cloudflare.APITokenCondition{
