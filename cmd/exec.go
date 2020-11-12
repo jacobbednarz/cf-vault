@@ -158,7 +158,6 @@ var execCmd = &cobra.Command{
 				cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_API_TOKEN=%s", shortLivedToken.Value))
 			}
 
-			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_SESSION_DURATION=%d", profile.SessionDuration))
 			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_SESSION_EXPIRY=%d", tokenExpiry.Unix()))
 		}
 
