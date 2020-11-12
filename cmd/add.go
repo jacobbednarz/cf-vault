@@ -26,7 +26,7 @@ type tomlConfig struct {
 type profile struct {
 	Email              string                 `toml:"email"`
 	AuthType           string                 `toml:"auth_type"`
-	SessionDuration    int                    `toml:"session_duration"`
+	SessionDuration    string                 `toml:"session_duration,omitempty"`
 	Resources          map[string]interface{} `toml:"resources,omitempty"`
 	PermissionGroupIDs []string               `toml:"permission_group_ids,omitempty"`
 }
@@ -108,7 +108,7 @@ var addCmd = &cobra.Command{
 			log.Fatalf("failed to open file at %s", home+defaultFullConfigPath)
 		}
 		defer configFile.Close()
-		if err := toml.NewEncoder(configFile).Indentation("").Encode(tomlConfigStruct); err != nil {
+		if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
 			log.Fatal(err)
 		}
 

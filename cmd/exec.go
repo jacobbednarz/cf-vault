@@ -101,7 +101,7 @@ var execCmd = &cobra.Command{
 		}
 
 		// Not using short lived tokens so set the static API token or API key.
-		if profile.SessionDuration == 0 {
+		if profile.SessionDuration == "" {
 			if profile.AuthType == "api_token" {
 				cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email))
 			}
@@ -125,8 +125,13 @@ var execCmd = &cobra.Command{
 				permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{ID: permissionGroupID})
 			}
 
+			parsedSessionDuration, err := time.ParseDuration(profile.SessionDuration)
+			if err != nil {
+				log.Fatal(err)
+			}
 			now, _ := time.Parse(time.RFC3339, time.Now().UTC().Format(time.RFC3339))
-			tokenExpiry := now.Add(time.Minute * time.Duration(profile.SessionDuration))
+			tokenExpiry := now.Add(time.Second * time.Duration(parsedSessionDuration.Seconds()))
+
 			token := cloudflare.APIToken{
 				Name:      fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix()),
 				NotBefore: &now,
