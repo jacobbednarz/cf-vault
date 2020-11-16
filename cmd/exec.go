@@ -102,7 +102,7 @@ var execCmd = &cobra.Command{
 
 		// Not using short lived tokens so set the static API token or API key.
 		if profile.SessionDuration == "" {
-			if profile.AuthType == "api_token" {
+			if profile.AuthType == "api_key" {
 				cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email))
 			}
 			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profile.AuthType), string(keychain.Data)))
