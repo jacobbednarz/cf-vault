@@ -94,6 +94,10 @@ $ brew cask install jacobbednarz/cf-vault/cf-vault
 1. Now that you have created a profile, you can use it with `cf-vault exec
    [your-profile-name]`.
 
+If you do not wish to use the short lived credentials functionality,
+that's totally fine and you can do so by omitting the `session_duration` value
+and instead the long lived credentials you've setup will be used.
+
 ## Usage
 
 `cf-vault` allows you to manage your Cloudflare credentials in a safe place and
