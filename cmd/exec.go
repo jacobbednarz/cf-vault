@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -51,6 +52,8 @@ var execCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		env := environ(os.Environ())
+
 		profileName := args[0]
 		// Remove the extra executable name at the beginning of the slice.
 		copy(args[0:], args[0+1:])
@@ -96,16 +99,14 @@ var execCmd = &cobra.Command{
 			log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
 		}
 
-		cloudflareEnvironment := []string{
-			fmt.Sprintf("CLOUDFLARE_VAULT_SESSION=%s", profileName),
-		}
+		env.Set("CLOUDFLARE_VAULT_SESSION", profileName)
 
 		// Not using short lived tokens so set the static API token or API key.
 		if profile.SessionDuration == "" {
 			if profile.AuthType == "api_key" {
-				cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_EMAIL=%s", profile.Email))
+				env.Set("CLOUDFLARE_EMAIL", profile.Email)
 			}
-			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_%s=%s", strings.ToUpper(profile.AuthType), string(keychain.Data)))
+			env.Set(fmt.Sprintf("CLOUDFLARE_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
 		} else {
 			var api *cloudflare.API
 			if profile.AuthType == "api_token" {
@@ -120,9 +121,22 @@ var execCmd = &cobra.Command{
 				}
 			}
 
-			permissionGroups := []cloudflare.APITokenPermissionGroups{}
-			for _, permissionGroupID := range profile.PermissionGroupIDs {
-				permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{ID: permissionGroupID})
+			policies := []cloudflare.APITokenPolicies{}
+
+			for _, policy := range profile.Policies {
+				permissionGroups := []cloudflare.APITokenPermissionGroups{}
+				for _, group := range policy.PermissionGroups {
+					permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{
+						ID:   group.ID,
+						Name: group.Name,
+					})
+				}
+
+				policies = append(policies, cloudflare.APITokenPolicies{
+					Effect:           policy.Effect,
+					Resources:        policy.Resources,
+					PermissionGroups: permissionGroups,
+				})
 			}
 
 			parsedSessionDuration, err := time.ParseDuration(profile.SessionDuration)
@@ -136,11 +150,7 @@ var execCmd = &cobra.Command{
 				Name:      fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix()),
 				NotBefore: &now,
 				ExpiresOn: &tokenExpiry,
-				Policies: []cloudflare.APITokenPolicies{{
-					Effect:           "allow",
-					Resources:        profile.Resources,
-					PermissionGroups: permissionGroups,
-				}},
+				Policies:  policies,
 				Condition: &cloudflare.APITokenCondition{
 					RequestIP: &cloudflare.APITokenRequestIPCondition{
 						In:    []string{},
@@ -155,18 +165,17 @@ var execCmd = &cobra.Command{
 			}
 
 			if shortLivedToken.Value != "" {
-				cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_API_TOKEN=%s", shortLivedToken.Value))
+				env.Set("CLOUDFLARE_API_TOKEN", shortLivedToken.Value)
 			}
 
-			cloudflareEnvironment = append(cloudflareEnvironment, fmt.Sprintf("CLOUDFLARE_SESSION_EXPIRY=%d", tokenExpiry.Unix()))
+			env.Set("CLOUDFLARE_SESSION_EXPIRY", strconv.Itoa(int(tokenExpiry.Unix())))
 		}
 
 		// Should a command not be provided, drop into a fresh shell with the
 		// credentials populated alongside the existing env.
 		if len(args) == 0 {
 			log.Debug("launching new shell with credentials populated")
-			envVars := append(syscall.Environ(), cloudflareEnvironment...)
-			syscall.Exec(os.Getenv("SHELL"), []string{os.Getenv("SHELL")}, envVars)
+			syscall.Exec(os.Getenv("SHELL"), []string{os.Getenv("SHELL")}, env)
 		}
 
 		executable := args[0]
@@ -178,6 +187,6 @@ var execCmd = &cobra.Command{
 		log.Debugf("found executable %s", pathtoExec)
 		log.Debugf("executing command: %s", strings.Join(args, " "))
 
-		syscall.Exec(pathtoExec, args, cloudflareEnvironment)
+		syscall.Exec(pathtoExec, args, env)
 	},
 }
