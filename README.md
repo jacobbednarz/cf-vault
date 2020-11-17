@@ -42,10 +42,10 @@ $ brew cask install jacobbednarz/cf-vault/cf-vault
    While it is possible (and better practice of [principle of least privilege]),
    to use an API token with only permissions to create a new API token, this
    isn't really viable for all use cases yet. The recommended approach is to use
-   the API key for the profile and rely on `permission_group_ids` and
-   `resources` to scope the short lived credential. This allows the best of both
-   worlds where if you need to use a service that doesn't support API tokens,
-   you don't need to create a new profile.
+   the API key for the profile and rely on a custom policy to scope the short
+   lived credential. This allows the best of both worlds where if you need to
+   use a service that doesn't support API tokens, you don't need to create a new
+   profile.
 
    To create a new API token:
 
