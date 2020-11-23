@@ -50,6 +50,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "increase the verbosity of the output")
 
 	rootCmd.AddCommand(addCmd)
+	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(versionCmd)
 }
