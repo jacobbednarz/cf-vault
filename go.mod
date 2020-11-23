@@ -5,7 +5,9 @@ go 1.15
 require (
 	github.com/99designs/keyring v1.1.6
 	github.com/cloudflare/cloudflare-go v0.13.5
+	github.com/davecgh/go-spew v1.1.1
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/olekukonko/tablewriter v0.0.4
 	github.com/pelletier/go-toml v1.8.2-0.20201011232708-5b4e7e5dcc56
 	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/cobra v1.1.1
