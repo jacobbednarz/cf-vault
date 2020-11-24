@@ -151,12 +151,6 @@ var execCmd = &cobra.Command{
 				NotBefore: &now,
 				ExpiresOn: &tokenExpiry,
 				Policies:  policies,
-				Condition: &cloudflare.APITokenCondition{
-					RequestIP: &cloudflare.APITokenRequestIPCondition{
-						In:    []string{},
-						NotIn: []string{},
-					},
-				},
 			}
 
 			shortLivedToken, err := api.CreateAPIToken(token)
