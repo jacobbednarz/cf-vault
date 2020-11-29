@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/cloudflare/cloudflare-go"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -75,13 +76,14 @@ var addCmd = &cobra.Command{
 		fmt.Print("Authentication value (API key or API token): ")
 		byteAuthValue, err := terminal.ReadPassword(0)
 		if err != nil {
-			log.Fatalf("\nunable to read authentication value: %s", err)
+			log.Fatal("unable to read authentication value: ", err)
 		}
 		authValue := string(byteAuthValue)
+		fmt.Println()
 
 		authType, err := determineAuthType(strings.TrimSpace(authValue))
 		if err != nil {
-			log.Fatalf("failed to detect authentication type: %s", err)
+			log.Fatal("failed to detect authentication type: ", err)
 		}
 
 		home, err := homedir.Dir()
@@ -159,7 +161,7 @@ var addCmd = &cobra.Command{
 
 		configFile, err := os.OpenFile(home+defaultFullConfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
 		if err != nil {
-			log.Fatalf("failed to open file at %s", home+defaultFullConfigPath)
+			log.Fatal("failed to open file at ", home+defaultFullConfigPath)
 		}
 		defer configFile.Close()
 		if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
