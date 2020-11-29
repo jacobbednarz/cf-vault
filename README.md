@@ -129,6 +129,21 @@ $ env | grep -i cloudflare
 # => no results
 ```
 
+## Predefined short lived token policies
+
+If you don't need to generate a custom token policy, you can instead use one of
+the predefined templates which takes care of the heavy lifting for you. You can
+use `read-only` (read all resources) or `write-everything` (write all resources)
+as the `--profile-template` flag and it will generate everything needed behind
+the scenes on your behalf. Note: You **still** need to provide
+`--session-duration` as well otherwise the short lived tokens will not be
+generated.
+
+Examples:
+
+- `cf-vault add my-read-profile-name --profile-template "read-only" --session-duration "15m"`
+- `cf-vault add my-write-profile-name --profile-template "write-everything" --session-duration "15m"`
+
 ## Generating token policies
 
 While TOML is more readable, its not always straight forward to generate the
