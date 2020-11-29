@@ -49,6 +49,11 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "increase the verbosity of the output")
 
+	var profileTemplate string
+	var sessionDuration string
+	addCmd.Flags().StringVarP(&profileTemplate, "profile-template", "", "", "create profile with a predefined permissions and resources template")
+	addCmd.Flags().StringVarP(&sessionDuration, "session-duration", "", "", "TTL of short lived tokens requests")
+
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(execCmd)
