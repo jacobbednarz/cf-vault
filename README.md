@@ -112,6 +112,8 @@ $ cf-vault exec work -- env | grep -i cloudflare
 CLOUDFLARE_VAULT_SESSION=work
 CLOUDFLARE_EMAIL=jacob@example.com
 CLOUDFLARE_API_KEY=s3cr3t
+CF_EMAIL=jacob@example.com
+CF_API_KEY=s3cr3t
 ```
 
 If you don't provide a command, you will be dropped into a new shell with the
@@ -123,6 +125,8 @@ $ env | grep -i cloudflare
 CLOUDFLARE_VAULT_SESSION=work
 CLOUDFLARE_EMAIL=jacob@example.com
 CLOUDFLARE_API_KEY=s3cr3t
+CF_EMAIL=jacob@example.com
+CF_API_KEY=s3cr3t
 
 $ exit
 $ env | grep -i cloudflare

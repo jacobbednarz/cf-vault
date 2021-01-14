@@ -31,6 +31,8 @@ var execCmd = &cobra.Command{
     CLOUDFLARE_VAULT_SESSION=example-profile
     CLOUDFLARE_EMAIL=jacob@example.com
     CLOUDFLARE_API_KEY=s3cr3t
+    CF_EMAIL=jacob@example.com
+    CF_API_KEY=s3cr3t
 
   Spawn a new shell with credentials populated
 
@@ -39,6 +41,8 @@ var execCmd = &cobra.Command{
     CLOUDFLARE_VAULT_SESSION=example-profile
     CLOUDFLARE_EMAIL=jacob@example.com
     CLOUDFLARE_API_KEY=s3cr3t
+    CF_EMAIL=jacob@example.com
+    CF_API_KEY=s3cr3t
 `,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -105,8 +109,10 @@ var execCmd = &cobra.Command{
 		if profile.SessionDuration == "" {
 			if profile.AuthType == "api_key" {
 				env.Set("CLOUDFLARE_EMAIL", profile.Email)
+				env.Set("CF_EMAIL", profile.Email)
 			}
 			env.Set(fmt.Sprintf("CLOUDFLARE_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
+			env.Set(fmt.Sprintf("CF_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
 		} else {
 			var api *cloudflare.API
 			if profile.AuthType == "api_token" {
@@ -160,6 +166,7 @@ var execCmd = &cobra.Command{
 
 			if shortLivedToken.Value != "" {
 				env.Set("CLOUDFLARE_API_TOKEN", shortLivedToken.Value)
+				env.Set("CF_API_TOKEN", shortLivedToken.Value)
 			}
 
 			env.Set("CLOUDFLARE_SESSION_EXPIRY", strconv.Itoa(int(tokenExpiry.Unix())))
