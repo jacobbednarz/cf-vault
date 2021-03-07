@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -143,7 +144,7 @@ var addCmd = &cobra.Command{
 			// valid credentials but needs them to generate the resources. We
 			// intentionally spit out `Debug` and `Fatal` messages here to show the
 			// original error *and* the friendly version of how to resolve it.
-			userDetails, err := api.UserDetails()
+			userDetails, err := api.UserDetails(context.Background())
 			if err != nil {
 				log.Debug(err)
 				log.Fatal("failed to fetch user ID from the Cloudflare API which is required to generate the predefined short lived token policies. If you are using API tokens, please allow the permission to access your user details and try again.")

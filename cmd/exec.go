@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -159,7 +160,7 @@ var execCmd = &cobra.Command{
 				Policies:  policies,
 			}
 
-			shortLivedToken, err := api.CreateAPIToken(token)
+			shortLivedToken, err := api.CreateAPIToken(context.Background(), token)
 			if err != nil {
 				log.Fatalf("failed to create API token: %s", err)
 			}
