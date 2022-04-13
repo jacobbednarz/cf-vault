@@ -3,8 +3,8 @@ github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4/go.mod h1:hN
 github.com/99designs/keyring v1.1.6 h1:kVDC2uCgVwecxCk+9zoCt2uEL6dt+dfVzMvGgnVcIuM=
 github.com/99designs/keyring v1.1.6/go.mod h1:16e0ds7LGQQcT59QqkTg72Hh5ShM51Byv5PEmW6uoRU=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/cloudflare/cloudflare-go v0.36.0 h1:GIDxQz61fYUFKs5Cr4mCbZlMz+GepX9+23W4/mjaQdk=
-github.com/cloudflare/cloudflare-go v0.36.0/go.mod h1:EfqOgbgOTf9U+67Z5MR2t/MuVj5OjLlXs+dN6DBh6C8=
+github.com/cloudflare/cloudflare-go v0.37.0 h1:8LUyAtev5PZ92Wzxzsm9jOQj0ZTz3BBc5F1ISfwgxvk=
+github.com/cloudflare/cloudflare-go v0.37.0/go.mod h1:EfqOgbgOTf9U+67Z5MR2t/MuVj5OjLlXs+dN6DBh6C8=
 github.com/cpuguy83/go-md2man/v2 v2.0.1/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/danieljoos/wincred v1.0.2 h1:zf4bhty2iLuwgjgpraD2E9UbvO+fe54XXGJbOwe23fU=
 github.com/danieljoos/wincred v1.0.2/go.mod h1:SnuYRW9lp1oJrZX/dXJqr0cPK5gYXqx3EJbmjhLdK9U=
