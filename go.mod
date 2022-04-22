@@ -8,7 +8,7 @@ require (
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/olekukonko/tablewriter v0.0.5
-	github.com/pelletier/go-toml v1.9.4
+	github.com/pelletier/go-toml v1.9.5
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.4.0
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
