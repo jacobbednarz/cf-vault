@@ -4,7 +4,7 @@ go 1.15
 
 require (
 	github.com/99designs/keyring v1.1.6
-	github.com/cloudflare/cloudflare-go v0.39.0
+	github.com/cloudflare/cloudflare-go v0.40.0
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/olekukonko/tablewriter v0.0.5
