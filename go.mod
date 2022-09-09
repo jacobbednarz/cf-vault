@@ -12,7 +12,7 @@ require (
 	github.com/spf13/cobra v1.5.0
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616
-	golang.org/x/tools/gopls v0.9.4
+	golang.org/x/tools/gopls v0.9.5
 )
 
 require (
@@ -35,6 +35,7 @@ require (
 	github.com/sergi/go-diff v1.2.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.4.0 // indirect
+	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/exp/typeparams v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
@@ -43,8 +44,8 @@ require (
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220224211638-0e9765cccd65 // indirect
-	golang.org/x/tools v0.1.13-0.20220812184215-3f9b119300de // indirect
-	golang.org/x/vuln v0.0.0-20220725105440-4151a5aca1df // indirect
+	golang.org/x/tools v0.1.13-0.20220908144252-ce397412b6a4 // indirect
+	golang.org/x/vuln v0.0.0-20220901221904-62b0186a1058 // indirect
 	honnef.co/go/tools v0.3.3 // indirect
 	mvdan.cc/gofumpt v0.3.1 // indirect
 	mvdan.cc/unparam v0.0.0-20220706161116-678bad134442 // indirect
