@@ -27,7 +27,7 @@ jobs:
           formula-path: Casks/cf-vault.rb
           homebrew-tap: jacobbednarz/homebrew-tap
           base-branch: master
-          download-url: https://github.com/jacobbednarz/cf-vault/releases/download/${{ github.event.inputs.tag-name }}/cf-vault_${{ github.event.inputs.tag-name }}_darwin_amd64.tar.gz
+          download-url: https://github.com/jacobbednarz/cf-vault/releases/download/${{ github.event.inputs.tag-name }}/cf-vault_${{ github.event.inputs.tag-name }}_darwin_amd64.zip
           commit-message: Bump {{formulaName}} to {{version}}
           tag-name: ${{ github.event.inputs.tag-name }}
         env:
