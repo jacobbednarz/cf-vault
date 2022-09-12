@@ -3,6 +3,7 @@ on:
   push:
     tags:
       - '*'
+  
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
@@ -11,6 +12,10 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      - name: Extract version
+        id: extract-version
+        run: |
+          printf "::set-output name=%s::%s\n" tag-name "${GITHUB_REF#refs/tags/}"
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
@@ -22,10 +27,11 @@ jobs:
           args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: macauley/action-homebrew-bump-cask@v1
+      - uses: mislav/bump-homebrew-formula-action@v2
         with:
-          token: ${{ secrets.HOMEBREW_UPDATER_PAT }}
-          tap: jacobbednarz/tap
-          cask: cf-vault
-          tag: ${{ github.ref }}
-          revision: ${{ github.sha }}
+            formula-name: cf-vault
+            formula-path: Casks/cf-vault.rb
+            homebrew-tap: jacobbednarz/homebrew-tap
+            base-branch: master
+            download-url: https://github.com/jacobbednarz/cf-vault/releases/download/${{ steps.extract-version.outputs.tag-name }}/cf-vault_${{ steps.extract-version.outputs.tag-name }}_darwin_amd64.tar.gz
+            commit-message: Bump {{formulaName}} to {{version}}
