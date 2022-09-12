@@ -21,8 +21,8 @@ storage (such as Mac OS keychain).
 ## Install
 
 ```
-$ brew tap jacobbednarz/cf-vault
-$ brew cask install jacobbednarz/cf-vault/cf-vault
+$ brew tap jacobbednarz/tap
+$ brew install jacobbednarz/tap/cf-vault
 ```
 
 ## Getting started
