@@ -7,6 +7,7 @@ import (
 	"github.com/99designs/keyring"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 
 var keyringDefaults = keyring.Config{
 	FileDir:                  fmt.Sprintf("~/.%s/keys/", projectName),
+	FilePasswordFunc:         fileKeyringPassphrasePrompt,
 	ServiceName:              projectName,
 	KeychainName:             projectName,
 	LibSecretCollectionName:  projectNameWithoutHyphen,
@@ -42,6 +44,21 @@ var rootCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {},
+}
+
+// Get passphrase prompt (copied from https://github.com/99designs/aws-vault)
+func fileKeyringPassphrasePrompt(prompt string) (string, error) {
+	if password, ok := os.LookupEnv("CF_VAULT_FILE_PASSPHRASE"); ok {
+		return password, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "%s: ", prompt)
+	b, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
+	}
+	fmt.Println()
+	return string(b), nil
 }
 
 func init() {
