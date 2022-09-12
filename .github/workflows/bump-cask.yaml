@@ -1,0 +1,34 @@
+on:
+  workflow_dispatch:
+    inputs:
+      tag-name:
+        description: 'The git tag name to bump the formula to'
+        required: true
+  
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Extract version
+        id: extract-version
+        run: |
+          printf "::set-output name=%s::%s\n" tag-name "${GITHUB_REF#refs/tags/}"
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ^1.18
+      - uses: mislav/bump-homebrew-formula-action@v2
+        with:
+            formula-name: cf-vault
+            formula-path: Casks/cf-vault.rb
+            homebrew-tap: jacobbednarz/homebrew-tap
+            base-branch: master
+            download-url: https://github.com/jacobbednarz/cf-vault/releases/download/${{ steps.extract-version.outputs.tag-name }}/cf-vault_${{ steps.extract-version.outputs.tag-name }}_darwin_amd64.tar.gz
+            commit-message: Bump {{formulaName}} to {{version}}
+            tag-name: ${{ github.event.inputs.tag-name }}
+         env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_UPDATER_PAT }}
