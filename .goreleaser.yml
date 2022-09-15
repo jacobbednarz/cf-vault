@@ -1,19 +1,23 @@
 builds:
-- env:
-    - CGO_ENABLED=0
-  mod_timestamp: '{{ .CommitTimestamp }}'
-  flags:
-    - -trimpath
-  ldflags:
-    - -s -w -X github.com/jacobbednarz/cf-vault/cmd.Rev={{ .Version }}
-  goos:
-    - darwin
-    - freebsd
-    - linux
-    - windows
+  - env:
+      - CGO_ENABLED=0
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    flags:
+      - -trimpath
+    asmflags:
+      - all=-trimpath=$GOPATH
+    gcflags:
+      - all=-trimpath=$GOPATH
+    ldflags:
+      - -s -w -X github.com/jacobbednarz/cf-vault/cmd.Rev={{ .Version }}
+    goos:
+      - darwin
+      - freebsd
+      - linux
+      - windows
 archives:
-- format: zip
-  name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - format: zip
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
