@@ -7,7 +7,7 @@ The goal of this project is to ensure that when you need to interact with Cloudf
 - You're not storing credentials unencrypted; and
 - You're not exposing your credentials to the entire environment or to all
   processes; and
-- Your not using long lived credentials
+- You're not using long lived credentials
 
 To achieve this, `cf-vault` uses the concept of profiles with associated scopes
 to either generate short lived API tokens or retrieve the API key from secure
