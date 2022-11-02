@@ -197,10 +197,10 @@ golang.org/x/tools v0.1.11-0.20220513221640-090b14e8501f/go.mod h1:SgwaegtQh8clI
 golang.org/x/tools v0.1.12-0.20220628192153-7743d1d949f1/go.mod h1:SgwaegtQh8clINPpECJMqnxLv9I09HLqnW3RMqW0CA4=
 golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
 golang.org/x/tools v0.1.13-0.20220928184430-f80e98464e27/go.mod h1:VsjNM1dMo+Ofkp5d7y7fOdQZD8MTXSQ4w3EPk65AvKU=
-golang.org/x/tools v0.2.1-0.20221028182455-bd7d62852469 h1:N4UYjGjl5FFK3cn1CiPnWdTiLe3SjfprMLDNiYh+0Fc=
-golang.org/x/tools v0.2.1-0.20221028182455-bd7d62852469/go.mod h1:y4OqIKeOV/fWJetJ8bXPU1sEVniLMIyDAZWeHdV+NTA=
-golang.org/x/tools/gopls v0.10.0 h1:OGrMgGUl9LWTPaeN5ML3SotSguhrdMHbWevtM8cYN6s=
-golang.org/x/tools/gopls v0.10.0/go.mod h1:/8wY87tPnilVMKYiVWwKJAovYCiovDFoHCmHva+jV5E=
+golang.org/x/tools v0.2.1-0.20221101170700-b5bc717366b2 h1:KBm+UwBaO/tdQ35tfGvxH1FUCiXRg4MoTzkznsdeab8=
+golang.org/x/tools v0.2.1-0.20221101170700-b5bc717366b2/go.mod h1:y4OqIKeOV/fWJetJ8bXPU1sEVniLMIyDAZWeHdV+NTA=
+golang.org/x/tools/gopls v0.10.1 h1:JoHe17pdZ8Vsa24/GUO8iTVTKPh0EOBiWpPop7XJybI=
+golang.org/x/tools/gopls v0.10.1/go.mod h1:Qx7ViPP+PvAWWvdyRs3117p4xLPLB+7nz56jb9yjj/E=
 golang.org/x/vuln v0.0.0-20221010193109-563322be2ea9 h1:KaYZQUtEEaV8aVADIHAuYBTjo77aUcCvC7KTGKM3J1I=
 golang.org/x/vuln v0.0.0-20221010193109-563322be2ea9/go.mod h1:F12iebNzxRMpJsm4W7ape+r/KdnXiSy3VC94WsyCG68=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
