@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/99designs/keyring v1.1.6
-	github.com/cloudflare/cloudflare-go v0.61.0
+	github.com/cloudflare/cloudflare-go v0.62.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pelletier/go-toml v1.9.5
@@ -41,7 +41,7 @@ require (
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
-	golang.org/x/time v0.0.0-20220224211638-0e9765cccd65 // indirect
+	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.3.1-0.20221213193459-ca17b2c27ca8 // indirect
 	golang.org/x/vuln v0.0.0-20221109205719-3af8368ee4fe // indirect
 	honnef.co/go/tools v0.3.3 // indirect
