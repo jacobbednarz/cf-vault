@@ -8,8 +8,8 @@ github.com/BurntSushi/toml v1.2.1 h1:9F2/+DoOYIOksmaJFPw1tGFy1eDnIJXg+UHjuD8lTak
 github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/client9/misspell v0.3.4 h1:ta993UF76GwbvJcIo3Y68y/M3WxlpEHPWIGDkJYwzJI=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
-github.com/cloudflare/cloudflare-go v0.65.0 h1:bWs9AwKrbK9h2vbHd/rNFR7tCsk/ktTJ+wRimwNS48U=
-github.com/cloudflare/cloudflare-go v0.65.0/go.mod h1:tA44hjU9FfycofKT+lWWMHb/dEq1pRbiVPGuJo1WzLQ=
+github.com/cloudflare/cloudflare-go v0.66.0 h1:B74IvVGQ4UFYJnqQSK/9GbR+Y1HwNxqqdN2Bmg0dckg=
+github.com/cloudflare/cloudflare-go v0.66.0/go.mod h1:tA44hjU9FfycofKT+lWWMHb/dEq1pRbiVPGuJo1WzLQ=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/danieljoos/wincred v1.0.2 h1:zf4bhty2iLuwgjgpraD2E9UbvO+fe54XXGJbOwe23fU=
