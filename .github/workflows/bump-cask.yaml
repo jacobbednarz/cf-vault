@@ -21,14 +21,11 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: "1.20"
-      - uses: mislav/bump-homebrew-formula-action@v2
+      - name: Bump Homebrew tap
+        uses: macauley/action-homebrew-bump-cask@v1
         with:
-          formula-name: cf-vault
-          formula-path: Casks/cf-vault.rb
-          homebrew-tap: jacobbednarz/homebrew-tap
-          base-branch: master
-          download-url: https://github.com/jacobbednarz/cf-vault/releases/download/${{ github.event.inputs.tag-name }}/cf-vault_${{ github.event.inputs.tag-name }}_darwin_amd64.zip
-          commit-message: Bump {{formulaName}} to {{version}}
-          tag-name: ${{ github.event.inputs.tag-name }}
-        env:
-          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_UPDATER_PAT }}
+          token: ${{ secrets.HOMEBREW_UPDATER_PAT }}
+          tap: jacobbednarz/homebrew-tap
+          cask: cf-vault
+          livecheck: true
+          dryrun: false

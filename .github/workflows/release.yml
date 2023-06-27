@@ -28,16 +28,14 @@ jobs:
         uses: goreleaser/goreleaser-action@v4
         with:
           version: latest
-          args: release --rm-dist
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: mislav/bump-homebrew-formula-action@v2
+      - name: Bump Homebrew tap
+        uses: macauley/action-homebrew-bump-cask@v1
         with:
-          formula-name: cf-vault
-          formula-path: Casks/cf-vault.rb
-          homebrew-tap: jacobbednarz/homebrew-tap
-          base-branch: master
-          download-url: https://github.com/jacobbednarz/cf-vault/releases/download/${{ steps.extract-version.outputs.tag-name }}/cf-vault_${{ steps.extract-version.outputs.tag-name }}_darwin_amd64.zip
-          commit-message: Bump {{formulaName}} to {{version}}
-        env:
-          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_UPDATER_PAT }}
+          token: ${{ secrets.HOMEBREW_UPDATER_PAT }}
+          tap: jacobbednarz/homebrew-tap
+          cask: cf-vault
+          livecheck: true
+          dryrun: false
