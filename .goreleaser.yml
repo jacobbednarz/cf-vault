@@ -1,20 +1,20 @@
 builds:
-  - id: linux-build
-    flags:
-      - -trimpath
-    asmflags:
-      - all=-trimpath=$GOPATH
-    gcflags:
-      - all=-trimpath=$GOPATH
-    ldflags:
-      - -s -w -X github.com/jacobbednarz/cf-vault/cmd.Rev={{ .Version }}
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - linux
-    ignore:
-      - goos: linux
-        goarch: "386"
+  # - id: linux-build
+  #   flags:
+  #     - -trimpath
+  #   asmflags:
+  #     - all=-trimpath=$GOPATH
+  #   gcflags:
+  #     - all=-trimpath=$GOPATH
+  #   ldflags:
+  #     - -s -w -X github.com/jacobbednarz/cf-vault/cmd.Rev={{ .Version }}
+  #   env:
+  #     - CGO_ENABLED=1
+  #   goos:
+  #     - linux
+  #   ignore:
+  #     - goos: linux
+  #       goarch: "386"
   - id: darwin-build
     flags:
       - -trimpath
