@@ -1,7 +1,5 @@
 builds:
-  - env:
-      - CGO_ENABLED=0
-    mod_timestamp: '{{ .CommitTimestamp }}'
+  - id: linux-build
     flags:
       - -trimpath
     asmflags:
@@ -10,16 +8,39 @@ builds:
       - all=-trimpath=$GOPATH
     ldflags:
       - -s -w -X github.com/jacobbednarz/cf-vault/cmd.Rev={{ .Version }}
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    ignore:
+      - goos: linux
+        goarch: "386"
+  - id: darwin-build
+    flags:
+      - -trimpath
+    asmflags:
+      - all=-trimpath=$GOPATH
+    gcflags:
+      - all=-trimpath=$GOPATH
+    ldflags:
+      - -s -w -X github.com/jacobbednarz/cf-vault/cmd.Rev={{ .Version }}
+    env:
+      - CGO_ENABLED=1
+      - CC=/home/runner/work/osxcross/target/bin/o64-clang
+      - CXX=/home/runner/work/osxcross/target/bin/o64-clang++
     goos:
       - darwin
-      - freebsd
-      - linux
-      - windows
+    ignore:
+      - goos: darwin
+        goarch: "386"
+
 archives:
   - format: zip
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
+
 changelog:
   skip: true
