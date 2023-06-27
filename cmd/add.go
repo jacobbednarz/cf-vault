@@ -511,5 +511,5 @@ func generatePolicy(policyType, userID string) ([]policy, error) {
 		return readOnlyPolicy, nil
 	}
 
-	return nil, fmt.Errorf("unable to generate policy for %q", policyType)
+	return nil, fmt.Errorf("unable to generate policy for %q, valid policy names: [read-only, write-everything]", policyType)
 }
