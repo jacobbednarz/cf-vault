@@ -170,7 +170,10 @@ var addCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		ring, _ := keyring.Open(keyringDefaults)
+		ring, err := keyring.Open(keyringDefaults)
+		if err != nil {
+			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+		}
 
 		_ = ring.Set(keyring.Item{
 			Key:  fmt.Sprintf("%s-%s", profileName, authType),
