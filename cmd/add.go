@@ -175,12 +175,17 @@ var addCmd = &cobra.Command{
 			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
 		}
 
-		_ = ring.Set(keyring.Item{
+		resp := ring.Set(keyring.Item{
 			Key:  fmt.Sprintf("%s-%s", profileName, authType),
 			Data: []byte(authValue),
 		})
 
-		fmt.Println("\nSuccess! Credentials have been set and are now ready for use!")
+		if resp == nil {
+			fmt.Println("\nSuccess! Credentials have been set and are now ready for use!")
+		} else {
+			// error of some sort
+			log.Fatal("Error adding credentials to keyring: ", resp)
+		}
 	},
 }
 
