@@ -15,7 +15,7 @@ if [ -d build ]; then
 fi
 mkdir -p build
 
-platforms=("windows/amd64" "linux/amd64" "darwin/amd64")
+platforms=("windows/amd64" "linux/amd64" "darwin/amd64" "darwin/arm64")
 
 echo "==> Build started for v${version}"
 
@@ -35,9 +35,9 @@ do
   GCFLAGS="-gcflags=all=-trimpath=$GOPATH -asmflags=all=-trimpath=$GOPATH"
 
   if [ $GOOS = "windows" ]; then
-    env GOOS=$GOOS GOARCH=$GOARCH go build $GCFLAGS -o "build/${GOOS}/cf-vault.exe" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
+    env GOOS=$GOOS GOARCH=$GOARCH go build $GCFLAGS -o "build/${GOOS}/${GOARCH}/cf-vault.exe" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
   else
-    env GOOS=$GOOS GOARCH=$GOARCH go build $GCFLAGS -o "build/${GOOS}/cf-vault" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
+    env GOOS=$GOOS GOARCH=$GOARCH go build $GCFLAGS -o "build/${GOOS}/${GOARCH}/cf-vault" -ldflags "-X github.com/jacobbednarz/cf-vault/cmd.Rev=${version_with_sha}" .
   fi
   if [ $? -ne 0 ]; then
     echo "Building the binary has failed!"
@@ -48,9 +48,9 @@ do
 
   printf "==> Tarballing %s\t%s\n" "$platform" "build/${output_name}.tar.gz" | expand -t 30
   if [ $GOOS = "windows" ]; then
-    tar -czf "build/${output_name}.tar.gz" -C "build/$GOOS" "cf-vault.exe"
+    tar -czf "build/${output_name}.tar.gz" -C "build/$GOOS/$GOARCH" "cf-vault.exe"
   else
-    tar -czf "build/${output_name}.tar.gz" -C "build/$GOOS" "cf-vault"
+    tar -czf "build/${output_name}.tar.gz" -C "build/$GOOS/$GOARCH" "cf-vault"
   fi
 
   if [ $? -ne 0 ]; then
@@ -59,7 +59,7 @@ do
   fi
 
   echo "==> Adding file checksums to build/checksums.txt"
-  shasum -a 256 build/$GOOS/* >> "build/checksums.txt"
+  shasum -a 256 build/$GOOS/$GOARCH/* >> "build/checksums.txt"
 done
 
 shasum -a 256 build/*.tar.gz >> "build/checksums.txt"
