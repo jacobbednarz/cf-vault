@@ -54,6 +54,7 @@ var execCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			log.SetLevel(log.DebugLevel)
+			keyring.Debug = true
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

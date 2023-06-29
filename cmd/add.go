@@ -62,6 +62,7 @@ var addCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			log.SetLevel(log.DebugLevel)
+			keyring.Debug = true
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -169,14 +170,22 @@ var addCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		ring, _ := keyring.Open(keyringDefaults)
+		ring, err := keyring.Open(keyringDefaults)
+		if err != nil {
+			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+		}
 
-		_ = ring.Set(keyring.Item{
+		resp := ring.Set(keyring.Item{
 			Key:  fmt.Sprintf("%s-%s", profileName, authType),
 			Data: []byte(authValue),
 		})
 
-		fmt.Println("\nSuccess! Credentials have been set and are now ready for use!")
+		if resp == nil {
+			fmt.Println("\nSuccess! Credentials have been set and are now ready for use!")
+		} else {
+			// error of some sort
+			log.Fatal("Error adding credentials to keyring: ", resp)
+		}
 	},
 }
 
