@@ -159,8 +159,8 @@ manually building your policy (though you can if you understand the syntax!).
 1. Create the token you'd like to use on the command line using the Cloudflare
    dashboard.
 1. Make the API call to fetch the token you've just created. See
-   https://api.cloudflare.com/#user-api-tokens-token-details or
-   https://api.cloudflare.com/#user-api-tokens-list-tokens to fetch all tokens.
+   https://developers.cloudflare.com/api/operations/user-api-tokens-token-details or
+   https://developers.cloudflare.com/api/operations/user-api-tokens-list-tokens to fetch all tokens.
 1. Write the contents of the single `result` JSON payload to a local file. For
    the example, I'll use `example_token.json` for the documentation.
 1. Run the following command using `docker` which will pull the `go-toml` tool
