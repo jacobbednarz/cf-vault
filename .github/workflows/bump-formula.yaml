@@ -25,6 +25,7 @@ jobs:
           formula-name: cf-vault
           formula-path: cf-vault.rb
           homebrew-tap: jacobbednarz/homebrew-tap
+          tag-name: ${{ steps.extract-version.outputs.tag-name }}
           download-url: https://github.com/jacobbednarz/cf-vault/archive/refs/tags/${{ steps.extract-version.outputs.tag-name }}.tar.gz
           commit-message: |
             Updates {{formulaName}} to {{version}}
