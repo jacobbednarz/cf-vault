@@ -15,8 +15,8 @@ jobs:
       - name: Extract version
         id: extract-version
         run: |
-          echo ${{ github.event }}
-          if [[ ${{ github.event }} == "workflow_dispatch" ]]; then
+          echo ${{ github.event_name }}
+          if [[ ${{ github.event_name }} == "workflow_dispatch" ]]; then
             echo "tag-name=${{ inputs.tag-name }}" >> $GITHUB_OUTPUT
           else
             echo "tag-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
