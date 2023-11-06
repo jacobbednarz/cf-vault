@@ -1,0 +1,27 @@
+on:
+  release:
+    types: [ released ]
+  workflow_dispatch:
+    inputs:
+      tag-name:
+        description: 'The git tag name to bump the formula to'
+        required: true
+
+jobs:
+  homebrew:
+    name: Bump Homebrew formula
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: extract-version
+        run: |
+          echo "tag-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: cf-vault
+          homebrew-tap: jacobbednarz/homebrew-tap
+          download-url: https://github.com/jacobbednarz/cf-vault/archive/refs/tags/${{ steps.extract-version.outputs.tag-name }}.tar.gz
+          commit-message: |
+            Updates {{formulaName}} to {{version}}
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_UPDATER_PAT }}
