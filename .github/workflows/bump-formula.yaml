@@ -19,6 +19,7 @@ jobs:
       - uses: mislav/bump-homebrew-formula-action@v3
         with:
           formula-name: cf-vault
+          formula-path: cf-vault.rb
           homebrew-tap: jacobbednarz/homebrew-tap
           download-url: https://github.com/jacobbednarz/cf-vault/archive/refs/tags/${{ steps.extract-version.outputs.tag-name }}.tar.gz
           commit-message: |
