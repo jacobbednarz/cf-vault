@@ -15,7 +15,11 @@ jobs:
       - name: Extract version
         id: extract-version
         run: |
-          echo "tag-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          if [[ ${{ github.event }} == "workflow_dispatch" ]]; then
+            echo "tag-name=${{ inputs.tag-name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
       - uses: mislav/bump-homebrew-formula-action@v3
         with:
           formula-name: cf-vault
