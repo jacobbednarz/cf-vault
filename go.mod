@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/99designs/keyring v1.1.6
-	github.com/cloudflare/cloudflare-go v0.89.0
+	github.com/cloudflare/cloudflare-go v0.90.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pelletier/go-toml v1.9.5
@@ -35,7 +35,7 @@ require (
 	github.com/stretchr/objx v0.4.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20221212164502-fae10dda9338 // indirect
 	golang.org/x/mod v0.15.0 // indirect
-	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/telemetry v0.0.0-20240209200032-7b892fcb8a78 // indirect
