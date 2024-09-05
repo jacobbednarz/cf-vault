@@ -12,7 +12,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	golang.org/x/crypto v0.26.0
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616
-	golang.org/x/tools/gopls v0.16.1
+	golang.org/x/tools/gopls v0.16.2
 )
 
 require (
@@ -32,15 +32,15 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.4.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20221212164502-fae10dda9338 // indirect
-	golang.org/x/mod v0.18.0 // indirect
+	golang.org/x/mod v0.20.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.23.0 // indirect
-	golang.org/x/telemetry v0.0.0-20240607193123-221703e18637 // indirect
+	golang.org/x/telemetry v0.0.0-20240829154258-f29ab539cc98 // indirect
 	golang.org/x/term v0.23.0 // indirect
 	golang.org/x/text v0.17.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.22.1-0.20240628205440-9c895dd76b34 // indirect
+	golang.org/x/tools v0.22.1-0.20240829175637-39126e24d653 // indirect
 	golang.org/x/vuln v1.0.4 // indirect
 	honnef.co/go/tools v0.4.7 // indirect
 	mvdan.cc/gofumpt v0.6.0 // indirect
