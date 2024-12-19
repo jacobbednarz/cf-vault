@@ -1,6 +1,6 @@
 module github.com/jacobbednarz/cf-vault
 
-go 1.20
+go 1.23
 
 require (
 	github.com/99designs/keyring v1.1.6
