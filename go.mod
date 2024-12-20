@@ -14,7 +14,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	golang.org/x/crypto v0.31.0
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616
-	golang.org/x/tools/gopls v0.17.0
+	golang.org/x/tools/gopls v0.17.1
 )
 
 require (
@@ -42,7 +42,7 @@ require (
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
-	golang.org/x/tools v0.27.1-0.20241211153006-a83c4ee29a47 // indirect
+	golang.org/x/tools v0.27.1-0.20241219162658-575221bfbda3 // indirect
 	golang.org/x/vuln v1.0.4 // indirect
 	honnef.co/go/tools v0.5.1 // indirect
 	mvdan.cc/gofumpt v0.7.0 // indirect
