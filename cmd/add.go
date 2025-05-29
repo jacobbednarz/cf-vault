@@ -5,14 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
-	"github.com/cloudflare/cloudflare-go"
-	"golang.org/x/crypto/ssh/terminal"
+	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/option"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/term"
 
 	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
@@ -20,6 +21,8 @@ import (
 
 	"github.com/pelletier/go-toml"
 )
+
+var client *cloudflare.Client
 
 type tomlConfig struct {
 	Profiles map[string]profile `toml:"profiles"`
@@ -33,15 +36,32 @@ type profile struct {
 }
 
 type policy struct {
-	Effect           string                 `toml:"effect"`
-	ID               string                 `toml:"id,omitempty"`
-	PermissionGroups []permissionGroup      `toml:"permission_groups"`
-	Resources        map[string]interface{} `toml:"resources"`
+	Effect           string            `toml:"effect"`
+	ID               string            `toml:"id,omitempty"`
+	PermissionGroups []permissionGroup `toml:"permission_groups"`
+	Resources        map[string]any    `toml:"resources"`
 }
 
 type permissionGroup struct {
-	ID   string `toml:"id"`
-	Name string `toml:"name,omitempty"`
+	ID          string   `toml:"id" json:"id"`
+	Name        string   `toml:"name,omitempty" json:"name"`
+	Description string   `toml:"-,omitempty" json:"description"`
+	Scopes      []string `toml:"-,omitempty" json:"scopes"`
+}
+
+// The structs below (response envelopes) can be removed once
+// they are present in cloudflare-go.
+
+type userDetailsResponseEnvelope struct {
+	Result userDetails `json:"result"`
+}
+
+type userDetails struct {
+	ID string `json:"id"`
+}
+
+type permissionGroupResponseEnvelope struct {
+	Result []permissionGroup `json:"result"`
 }
 
 var addCmd = &cobra.Command{
@@ -76,7 +96,7 @@ var addCmd = &cobra.Command{
 		emailAddress = strings.TrimSpace(emailAddress)
 
 		fmt.Print("Authentication value (API key or API token): ")
-		byteAuthValue, err := terminal.ReadPassword(0)
+		byteAuthValue, err := term.ReadPassword(0)
 		if err != nil {
 			logrus.Fatal("unable to read authentication value: ", err)
 		}
@@ -102,7 +122,7 @@ var addCmd = &cobra.Command{
 			defer file.Close()
 		}
 
-		existingConfigFileContents, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		existingConfigFileContents, err := os.ReadFile(home + defaultFullConfigPath)
 		if err != nil {
 			logrus.Fatal(err)
 		}
@@ -126,32 +146,32 @@ var addCmd = &cobra.Command{
 			logrus.Debug("session-duration was not set, not using short lived tokens")
 		}
 
-		var api *cloudflare.API
 		if authType == "api_token" {
-			api, err = cloudflare.NewWithAPIToken(authValue)
+			client = cloudflare.NewClient(option.WithAPIToken(authValue))
 			if err != nil {
 				logrus.Fatal(err)
 			}
 		} else {
-			api, err = cloudflare.New(authValue, emailAddress)
+			client = cloudflare.NewClient(option.WithAPIKey(authValue), option.WithAPIEmail(emailAddress))
 			if err != nil {
 				logrus.Fatal(err)
 			}
 		}
 
 		if profileTemplate != "" {
-			// The policies require that one of the resources is the current user.
-			// This leads to a potential chicken/egg scenario where the user doesn't
-			// valid credentials but needs them to generate the resources. We
-			// intentionally spit out `Debug` and `Fatal` messages here to show the
-			// original error *and* the friendly version of how to resolve it.
-			userDetails, err := api.UserDetails(context.Background())
+			var userDetailsResponse *userDetailsResponseEnvelope
+			_, err := client.User.Get(context.Background(), option.WithResponseBodyInto(&userDetailsResponse))
 			if err != nil {
-				log.Debug(err)
-				log.Fatal("failed to fetch user ID from the Cloudflare API which is required to generate the predefined short lived token policies. If you are using API tokens, please allow the permission to access your user details and try again.")
+				// The policies require that one of the resources is the current user.
+				// This leads to a potential chicken/egg scenario where the user doesn't
+				// valid credentials but needs them to generate the resources. We
+				// intentionally spit out `Debug` and `Fatal` messages here to show the
+				// original error *and* the friendly version of how to resolve it.
+				logrus.Debug(err)
+				logrus.Fatal("failed to fetch user ID from the Cloudflare API which is required to generate the predefined short lived token policies. If you are using API tokens, please allow the permission to access your user details and try again.")
 			}
 
-			generatedPolicy, err := generatePolicy(profileTemplate, userDetails.ID)
+			generatedPolicy, err := generatePolicy(profileTemplate, userDetailsResponse.Result.ID)
 			if err != nil {
 				logrus.Fatal(err)
 			}
