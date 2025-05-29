@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +18,7 @@ var versionCmd = &cobra.Command{
 	Long:  "",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
-			log.SetLevel(log.DebugLevel)
+			logrus.SetLevel(logrus.DebugLevel)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

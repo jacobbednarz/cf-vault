@@ -2,13 +2,12 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/mitchellh/go-homedir"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pelletier/go-toml"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -18,24 +17,24 @@ var listCmd = &cobra.Command{
 	Long:  "",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
-			log.SetLevel(log.DebugLevel)
+			logrus.SetLevel(logrus.DebugLevel)
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		home, err := homedir.Dir()
 		if err != nil {
-			log.Fatal("unable to find home directory: ", err)
+			logrus.Fatal("unable to find home directory: ", err)
 		}
 
-		configData, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		configData, err := os.ReadFile(home + defaultFullConfigPath)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 		}
 
 		config := tomlConfig{}
 		err = toml.Unmarshal(configData, &config)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 		}
 
 		if len(config.Profiles) == 0 {

@@ -5,13 +5,14 @@ import (
 	"os"
 
 	"github.com/99designs/keyring"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 var (
 	verbose                  bool
+	help                     bool
 	projectName              = "cf-vault"
 	projectNameWithoutHyphen = "cfvault"
 	defaultConfigDirectory   = "/." + projectName
@@ -32,10 +33,10 @@ var keyringDefaults = keyring.Config{
 
 var rootCmd = &cobra.Command{
 	Use:  projectName,
-	Long: "Manage your Cloudflare credentials, securely",
+	Long: "Manage your Cloudflare credentials, securely.",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
-			log.SetLevel(log.DebugLevel)
+			logrus.SetLevel(logrus.DebugLevel)
 		}
 
 		if len(args) == 0 {
@@ -53,7 +54,7 @@ func fileKeyringPassphrasePrompt(prompt string) (string, error) {
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: ", prompt)
-	b, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		return "", err
 	}
@@ -62,13 +63,13 @@ func fileKeyringPassphrasePrompt(prompt string) (string, error) {
 }
 
 func init() {
-	log.SetLevel(log.WarnLevel)
-
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "increase the verbosity of the output")
+	logrus.SetLevel(logrus.WarnLevel)
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Increase the verbosity of the output")
+	rootCmd.PersistentFlags().BoolVarP(&help, "help", "h", false, "Help for cf-vault")
 
 	var profileTemplate string
 	var sessionDuration string
-	addCmd.Flags().StringVarP(&profileTemplate, "profile-template", "", "", "create profile with a predefined permissions and resources template")
+	addCmd.Flags().StringVarP(&profileTemplate, "profile-template", "", "", "Create profile with a predefined permissions and resources template")
 	addCmd.Flags().StringVarP(&sessionDuration, "session-duration", "", "", "TTL of short lived tokens requests")
 
 	rootCmd.AddCommand(addCmd)

@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh/terminal"
+	"github.com/sirupsen/logrus"
 
 	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
@@ -61,7 +61,7 @@ var addCmd = &cobra.Command{
 	},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
-			log.SetLevel(log.DebugLevel)
+			logrus.SetLevel(logrus.DebugLevel)
 			keyring.Debug = true
 		}
 	},
@@ -78,33 +78,33 @@ var addCmd = &cobra.Command{
 		fmt.Print("Authentication value (API key or API token): ")
 		byteAuthValue, err := terminal.ReadPassword(0)
 		if err != nil {
-			log.Fatal("unable to read authentication value: ", err)
+			logrus.Fatal("unable to read authentication value: ", err)
 		}
 		authValue := string(byteAuthValue)
 		fmt.Println()
 
 		authType, err := determineAuthType(strings.TrimSpace(authValue))
 		if err != nil {
-			log.Fatal("failed to detect authentication type: ", err)
+			logrus.Fatal("failed to detect authentication type: ", err)
 		}
 
 		home, err := homedir.Dir()
 		if err != nil {
-			log.Fatal("unable to find home directory: ", err)
+			logrus.Fatal("unable to find home directory: ", err)
 		}
 
 		os.MkdirAll(home+defaultConfigDirectory, 0700)
 		if _, err := os.Stat(home + defaultFullConfigPath); os.IsNotExist(err) {
 			file, err := os.Create(home + defaultFullConfigPath)
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 			defer file.Close()
 		}
 
 		existingConfigFileContents, err := ioutil.ReadFile(home + defaultFullConfigPath)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 		}
 
 		tomlConfigStruct := tomlConfig{}
@@ -123,19 +123,19 @@ var addCmd = &cobra.Command{
 		if sessionDuration != "" {
 			newProfile.SessionDuration = sessionDuration
 		} else {
-			log.Debug("session-duration was not set, not using short lived tokens")
+			logrus.Debug("session-duration was not set, not using short lived tokens")
 		}
 
 		var api *cloudflare.API
 		if authType == "api_token" {
 			api, err = cloudflare.NewWithAPIToken(authValue)
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 		} else {
 			api, err = cloudflare.New(authValue, emailAddress)
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 		}
 
@@ -153,26 +153,26 @@ var addCmd = &cobra.Command{
 
 			generatedPolicy, err := generatePolicy(profileTemplate, userDetails.ID)
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 			newProfile.Policies = generatedPolicy
 		}
 
-		log.Debugf("new profile: %+v", newProfile)
+		logrus.Debugf("new profile: %+v", newProfile)
 		tomlConfigStruct.Profiles[profileName] = newProfile
 
 		configFile, err := os.OpenFile(home+defaultFullConfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
 		if err != nil {
-			log.Fatal("failed to open file at ", home+defaultFullConfigPath)
+			logrus.Fatal("failed to open file at ", home+defaultFullConfigPath)
 		}
 		defer configFile.Close()
 		if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 		}
 
 		ring, err := keyring.Open(keyringDefaults)
 		if err != nil {
-			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+			logrus.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
 		}
 
 		resp := ring.Set(keyring.Item{
@@ -184,17 +184,17 @@ var addCmd = &cobra.Command{
 			fmt.Println("\nSuccess! Credentials have been set and are now ready for use!")
 		} else {
 			// error of some sort
-			log.Fatal("Error adding credentials to keyring: ", resp)
+			logrus.Fatal("Error adding credentials to keyring: ", resp)
 		}
 	},
 }
 
 func determineAuthType(s string) (string, error) {
 	if apiTokenMatch, _ := regexp.MatchString("[A-Za-z0-9-_]{40}", s); apiTokenMatch {
-		log.Debug("API token detected")
+		logrus.Debug("API token detected")
 		return "api_token", nil
 	} else if apiKeyMatch, _ := regexp.MatchString("[0-9a-f]{37}", s); apiKeyMatch {
-		log.Debug("API key detected")
+		logrus.Debug("API key detected")
 		return "api_key", nil
 	} else {
 		return "", errors.New("invalid API token or API key format")

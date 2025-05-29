@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -14,10 +13,12 @@ import (
 	"os/exec"
 
 	"github.com/99designs/keyring"
-	"github.com/cloudflare/cloudflare-go"
+	"github.com/cloudflare/cloudflare-go/v4"
+	"github.com/cloudflare/cloudflare-go/v4/option"
+	"github.com/cloudflare/cloudflare-go/v4/user"
 	"github.com/mitchellh/go-homedir"
 	"github.com/pelletier/go-toml"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +54,7 @@ var execCmd = &cobra.Command{
 	},
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
-			log.SetLevel(log.DebugLevel)
+			logrus.SetLevel(logrus.DebugLevel)
 			keyring.Debug = true
 		}
 	},
@@ -68,41 +69,41 @@ var execCmd = &cobra.Command{
 
 		// Don't allow nesting of cf-vault sessions, it gets messy.
 		if os.Getenv("CLOUDFLARE_VAULT_SESSION") != "" {
-			log.Fatal("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
+			logrus.Fatal("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
 		}
 
-		log.Debug("using profile: ", profileName)
+		logrus.Debug("using profile: ", profileName)
 
 		home, err := homedir.Dir()
 		if err != nil {
-			log.Fatal("unable to find home directory: ", err)
+			logrus.Fatal("unable to find home directory: ", err)
 		}
 
-		configData, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		configData, err := os.ReadFile(home + defaultFullConfigPath)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 		}
 
 		config := tomlConfig{}
 		err = toml.Unmarshal(configData, &config)
 		if err != nil {
-			log.Fatal(err)
+			logrus.Fatal(err)
 		}
 
 		if _, ok := config.Profiles[profileName]; !ok {
-			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, home+defaultFullConfigPath)
+			logrus.Fatalf("no profile matching %q found in the configuration file at %s", profileName, home+defaultFullConfigPath)
 		}
 
 		profile := config.Profiles[profileName]
 
 		ring, err := keyring.Open(keyringDefaults)
 		if err != nil {
-			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+			logrus.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
 		}
 
 		keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profile.AuthType))
 		if err != nil {
-			log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
+			logrus.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
 		}
 
 		env.Set("CLOUDFLARE_VAULT_SESSION", profileName)
@@ -116,54 +117,67 @@ var execCmd = &cobra.Command{
 			env.Set(fmt.Sprintf("CLOUDFLARE_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
 			env.Set(fmt.Sprintf("CF_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
 		} else {
-			var api *cloudflare.API
+			var client *cloudflare.Client
 			if profile.AuthType == "api_token" {
-				api, err = cloudflare.NewWithAPIToken(string(keychain.Data))
-				if err != nil {
-					log.Fatal(err)
-				}
+				client = cloudflare.NewClient(option.WithAPIToken(string(keychain.Data)))
 			} else {
-				api, err = cloudflare.New(string(keychain.Data), profile.Email)
-				if err != nil {
-					log.Fatal(err)
-				}
+				client = cloudflare.NewClient(
+					option.WithAPIKey(string(keychain.Data)),
+					option.WithAPIEmail(profile.Email),
+				)
 			}
 
-			policies := []cloudflare.APITokenPolicies{}
+			// policies := []cloudflare.APITokenPolicies{}
 
-			for _, policy := range profile.Policies {
-				permissionGroups := []cloudflare.APITokenPermissionGroups{}
-				for _, group := range policy.PermissionGroups {
-					permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{
-						ID:   group.ID,
-						Name: group.Name,
-					})
-				}
+			// for _, policy := range profile.Policies {
+			// 	permissionGroups := []cloudflare.APITokenPermissionGroups{}
+			// 	for _, group := range policy.PermissionGroups {
+			// 		permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{
+			// 			ID:   group.ID,
+			// 			Name: group.Name,
+			// 		})
+			// 	}
 
-				policies = append(policies, cloudflare.APITokenPolicies{
-					Effect:           policy.Effect,
-					Resources:        policy.Resources,
-					PermissionGroups: permissionGroups,
-				})
-			}
+			// 	policies = append(policies, cloudflare.APITokenPolicies{
+			// 		Effect:           policy.Effect,
+			// 		Resources:        policy.Resources,
+			// 		PermissionGroups: permissionGroups,
+			// 	})
+			// }
+
+			// policies := []user.TokenPolicyParam{}
+			// for _, policy := range profile.Policies {
+			// 	permissionGroups := []shared.TokenPolicyPermissionGroupParam{}
+			// 	for _, group := range policy.PermissionGroups {
+			// 		permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{
+			// 			ID:   group.ID,
+			// 			Name: group.Name,
+			// 		})
+			// 	}
+
+			// 	policies = append(policies, cloudflare.APITokenPolicies{
+			// 		Effect:           policy.Effect,
+			// 		Resources:        policy.Resources,
+			// 		PermissionGroups: permissionGroups,
+			// 	})
+			// }
 
 			parsedSessionDuration, err := time.ParseDuration(profile.SessionDuration)
 			if err != nil {
-				log.Fatal(err)
+				logrus.Fatal(err)
 			}
 			now, _ := time.Parse(time.RFC3339, time.Now().UTC().Format(time.RFC3339))
 			tokenExpiry := now.Add(time.Second * time.Duration(parsedSessionDuration.Seconds()))
 
-			token := cloudflare.APIToken{
-				Name:      fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix()),
-				NotBefore: &now,
-				ExpiresOn: &tokenExpiry,
-				Policies:  policies,
-			}
+			shortLivedToken, err := client.User.Tokens.New(context.TODO(), user.TokenNewParams{
+				Name:      cloudflare.F(fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix())),
+				NotBefore: cloudflare.F(now),
+				ExpiresOn: cloudflare.F(tokenExpiry),
+				// Policies:  cloudflare.F(policies),
+			})
 
-			shortLivedToken, err := api.CreateAPIToken(context.Background(), token)
 			if err != nil {
-				log.Fatalf("failed to create API token: %s", err)
+				logrus.Fatalf("failed to create API token: %s", err)
 			}
 
 			if shortLivedToken.Value != "" {
@@ -177,18 +191,18 @@ var execCmd = &cobra.Command{
 		// Should a command not be provided, drop into a fresh shell with the
 		// credentials populated alongside the existing env.
 		if len(args) == 0 {
-			log.Debug("launching new shell with credentials populated")
+			logrus.Debug("launching new shell with credentials populated")
 			syscall.Exec(os.Getenv("SHELL"), []string{os.Getenv("SHELL")}, env)
 		}
 
 		executable := args[0]
 		pathtoExec, err := exec.LookPath(executable)
 		if err != nil {
-			log.Fatalf("couldn't find the executable '%s': %s", pathtoExec, err.Error())
+			logrus.Fatalf("couldn't find the executable %q: %s", pathtoExec, err.Error())
 		}
 
-		log.Debugf("found executable %s", pathtoExec)
-		log.Debugf("executing command: %s", strings.Join(args, " "))
+		logrus.Debugf("found executable %s", pathtoExec)
+		logrus.Debugf("executing command: %s", strings.Join(args, " "))
 
 		syscall.Exec(pathtoExec, args, env)
 	},
