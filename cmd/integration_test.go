@@ -31,7 +31,9 @@ func TestMain(m *testing.M) {
 		binaryPath = ""
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	os.RemoveAll(tmp)
+	os.Exit(code)
 }
 
 // cfVaultResult holds the output of a cf-vault subprocess run.
@@ -348,11 +350,11 @@ func TestIntegration_Exec_APIKey(t *testing.T) {
 	if !strings.Contains(result.Stdout, "CF_EMAIL=user@example.com") {
 		t.Errorf("expected CF_EMAIL in output, got:\n%s", result.Stdout)
 	}
-	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_KEY=") {
-		t.Errorf("expected CLOUDFLARE_API_KEY in output, got:\n%s", result.Stdout)
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_KEY=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f") {
+		t.Errorf("expected CLOUDFLARE_API_KEY with correct value in output, got:\n%s", result.Stdout)
 	}
-	if !strings.Contains(result.Stdout, "CF_API_KEY=") {
-		t.Errorf("expected CF_API_KEY in output, got:\n%s", result.Stdout)
+	if !strings.Contains(result.Stdout, "CF_API_KEY=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f") {
+		t.Errorf("expected CF_API_KEY with correct value in output, got:\n%s", result.Stdout)
 	}
 	if !strings.Contains(result.Stdout, "CLOUDFLARE_VAULT_SESSION=testprofile") {
 		t.Errorf("expected CLOUDFLARE_VAULT_SESSION=testprofile in output, got:\n%s", result.Stdout)
@@ -386,11 +388,11 @@ func TestIntegration_Exec_APIToken(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
 	}
 
-	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN=") {
-		t.Errorf("expected CLOUDFLARE_API_TOKEN in output, got:\n%s", result.Stdout)
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN=abcdefghijklmnopqrstuvwxyzABCDEF12345678") {
+		t.Errorf("expected CLOUDFLARE_API_TOKEN with correct value in output, got:\n%s", result.Stdout)
 	}
-	if !strings.Contains(result.Stdout, "CF_API_TOKEN=") {
-		t.Errorf("expected CF_API_TOKEN in output, got:\n%s", result.Stdout)
+	if !strings.Contains(result.Stdout, "CF_API_TOKEN=abcdefghijklmnopqrstuvwxyzABCDEF12345678") {
+		t.Errorf("expected CF_API_TOKEN with correct value in output, got:\n%s", result.Stdout)
 	}
 	// Email should NOT be set for api_token profiles.
 	if strings.Contains(result.Stdout, "CLOUDFLARE_EMAIL=") {
