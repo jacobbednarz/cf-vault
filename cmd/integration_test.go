@@ -103,6 +103,7 @@ func setupTestEnv(t *testing.T) (configDir string, keyringDir string, envVars []
 		"XDG_CONFIG_HOME=" + xdgConfig,
 		"XDG_DATA_HOME=" + xdgData,
 		"CF_VAULT_FILE_PASSPHRASE=test-passphrase",
+		"CF_VAULT_BACKEND=file",
 		"CLOUDFLARE_VAULT_SESSION=",
 	}
 
