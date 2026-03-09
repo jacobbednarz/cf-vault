@@ -132,3 +132,100 @@ func TestIntegration_Version(t *testing.T) {
 		t.Errorf("expected version format with parentheses, got: %q", result.Stdout)
 	}
 }
+
+func TestIntegration_List_NoProfiles(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Write a config file with no profiles section.
+	writeConfig(t, configDir, "")
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("no profiles found")) {
+		t.Errorf("expected 'no profiles found' in output, got: %q", result.Stdout)
+	}
+}
+
+func TestIntegration_List_APIKeyProfile(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.myprofile]
+    email = "test@example.com"
+    auth_type = "api_key"
+`)
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("myprofile")) {
+		t.Errorf("expected 'myprofile' in output, got: %q", result.Stdout)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("api_key")) {
+		t.Errorf("expected 'api_key' in output, got: %q", result.Stdout)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("test@example.com")) {
+		t.Errorf("expected email in output for api_key profile, got: %q", result.Stdout)
+	}
+}
+
+func TestIntegration_List_APITokenProfile(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.tokenprofile]
+    auth_type = "api_token"
+`)
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("tokenprofile")) {
+		t.Errorf("expected 'tokenprofile' in output, got: %q", result.Stdout)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("api_token")) {
+		t.Errorf("expected 'api_token' in output, got: %q", result.Stdout)
+	}
+	// Email should NOT appear for api_token profiles.
+	if bytes.Contains([]byte(result.Stdout), []byte("@example.com")) {
+		t.Errorf("email should not appear for api_token profile, got: %q", result.Stdout)
+	}
+}
+
+func TestIntegration_List_MultipleProfiles(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.profile-one]
+    email = "one@example.com"
+    auth_type = "api_key"
+  [profiles.profile-two]
+    auth_type = "api_token"
+`)
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("profile-one")) {
+		t.Errorf("expected 'profile-one' in output, got: %q", result.Stdout)
+	}
+	if !bytes.Contains([]byte(result.Stdout), []byte("profile-two")) {
+		t.Errorf("expected 'profile-two' in output, got: %q", result.Stdout)
+	}
+}
