@@ -55,6 +55,8 @@ func resolveKeyringDir() (string, error) {
 }
 
 // openKeyring opens the keyring backend with paths resolved via resolveKeyringDir.
+// If CF_VAULT_BACKEND is set, it selects that backend exclusively; otherwise the
+// defaults from keyringDefaults apply.
 func openKeyring() (keyring.Keyring, error) {
 	keyringDir, err := resolveKeyringDir()
 	if err != nil {
@@ -63,5 +65,10 @@ func openKeyring() (keyring.Keyring, error) {
 
 	cfg := keyringDefaults
 	cfg.FileDir = keyringDir + "/"
+
+	if backend := os.Getenv("CF_VAULT_BACKEND"); backend != "" {
+		cfg.AllowedBackends = []keyring.BackendType{keyring.BackendType(backend)}
+	}
+
 	return keyring.Open(cfg)
 }

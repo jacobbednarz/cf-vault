@@ -1,9 +1,13 @@
 package main
 
 import (
+	"os"
+
 	"github.com/jacobbednarz/cf-vault/cmd"
 )
 
 func main() {
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }

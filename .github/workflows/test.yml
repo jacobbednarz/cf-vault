@@ -13,12 +13,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
       - name: Format
-        run: gofmt -d .
+        run: test -z "$(gofmt -l .)"
       - name: Lint
         run: |
           go generate -tags tools tools/tools.go
           $(go env GOPATH)/bin/golint -set_exit_status .
       - name: Vet
-        run: go vet
+        run: go vet ./...
       - name: Test
         run: go test -v -race ./...
