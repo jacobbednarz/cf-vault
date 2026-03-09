@@ -1,6 +1,9 @@
 package cmd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDetermineAuthType_APIToken(t *testing.T) {
 	// 40-char alphanumeric+hyphen+underscore = API token
@@ -30,5 +33,9 @@ func TestDetermineAuthType_Invalid(t *testing.T) {
 	_, err := determineAuthType("tooshort")
 	if err == nil {
 		t.Error("expected error for invalid value, got nil")
+		return
+	}
+	if !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("unexpected error message: %s", err.Error())
 	}
 }
