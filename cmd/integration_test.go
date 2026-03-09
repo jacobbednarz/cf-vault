@@ -231,3 +231,60 @@ func TestIntegration_List_MultipleProfiles(t *testing.T) {
 		t.Errorf("expected 'profile-two' in output, got: %q", result.Stdout)
 	}
 }
+
+func TestIntegration_Exec_MissingProfileArg(t *testing.T) {
+	result := runCfVault(t, nil, "exec")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit for missing profile arg, got 0\nstdout: %s", result.Stdout)
+	}
+
+	combined := result.Stdout + result.Stderr
+	if !strings.Contains(combined, "requires a profile argument") {
+		t.Errorf("expected 'requires a profile argument' in output, got stdout=%q stderr=%q",
+			result.Stdout, result.Stderr)
+	}
+}
+
+func TestIntegration_Exec_ProfileNotFound(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.someprofile]
+    auth_type = "api_token"
+`)
+
+	result := runCfVault(t, envVars, "exec", "nonexistent-profile", "--", "env")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit for unknown profile, got 0")
+	}
+	if !strings.Contains(result.Stderr, "nonexistent-profile") {
+		t.Errorf("expected profile name in error output, got stderr=%q", result.Stderr)
+	}
+}
+
+func TestIntegration_Exec_NestedSessionRejected(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.myprofile]
+    auth_type = "api_token"
+`)
+
+	// Override the empty CLOUDFLARE_VAULT_SESSION with a real value to simulate nesting.
+	envVars = append(envVars, "CLOUDFLARE_VAULT_SESSION=existing-session")
+
+	result := runCfVault(t, envVars, "exec", "myprofile", "--", "env")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit when session already set, got 0")
+	}
+	if !strings.Contains(result.Stderr, "shouldn't be nested") {
+		t.Errorf("expected nesting error message in stderr, got: %q", result.Stderr)
+	}
+}
