@@ -115,3 +115,20 @@ func writeConfig(t *testing.T, configDir, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestIntegration_Version(t *testing.T) {
+	result := runCfVault(t, nil, "version")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+
+	if !bytes.Contains([]byte(result.Stdout), []byte("cf-vault")) {
+		t.Errorf("expected 'cf-vault' in output, got: %q", result.Stdout)
+	}
+
+	// Format: cf-vault <version> (goX.Y.Z,gc-amd64)
+	if !bytes.Contains([]byte(result.Stdout), []byte("(")) {
+		t.Errorf("expected version format with parentheses, got: %q", result.Stdout)
+	}
+}
