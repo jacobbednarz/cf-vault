@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,12 +124,12 @@ func TestIntegration_Version(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
 	}
 
-	if !bytes.Contains([]byte(result.Stdout), []byte("cf-vault")) {
+	if !strings.Contains(result.Stdout, "cf-vault") {
 		t.Errorf("expected 'cf-vault' in output, got: %q", result.Stdout)
 	}
 
 	// Format: cf-vault <version> (goX.Y.Z,gc-amd64)
-	if !bytes.Contains([]byte(result.Stdout), []byte("(")) {
+	if !strings.Contains(result.Stdout, "(") {
 		t.Errorf("expected version format with parentheses, got: %q", result.Stdout)
 	}
 }
@@ -145,7 +146,7 @@ func TestIntegration_List_NoProfiles(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("no profiles found")) {
+	if !strings.Contains(result.Stdout, "no profiles found") {
 		t.Errorf("expected 'no profiles found' in output, got: %q", result.Stdout)
 	}
 }
@@ -166,13 +167,13 @@ func TestIntegration_List_APIKeyProfile(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("myprofile")) {
+	if !strings.Contains(result.Stdout, "myprofile") {
 		t.Errorf("expected 'myprofile' in output, got: %q", result.Stdout)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("api_key")) {
+	if !strings.Contains(result.Stdout, "api_key") {
 		t.Errorf("expected 'api_key' in output, got: %q", result.Stdout)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("test@example.com")) {
+	if !strings.Contains(result.Stdout, "test@example.com") {
 		t.Errorf("expected email in output for api_key profile, got: %q", result.Stdout)
 	}
 }
@@ -185,6 +186,7 @@ func TestIntegration_List_APITokenProfile(t *testing.T) {
 [profiles]
   [profiles.tokenprofile]
     auth_type = "api_token"
+    email = "token@example.com"
 `)
 
 	result := runCfVault(t, envVars, "list")
@@ -192,14 +194,14 @@ func TestIntegration_List_APITokenProfile(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("tokenprofile")) {
+	if !strings.Contains(result.Stdout, "tokenprofile") {
 		t.Errorf("expected 'tokenprofile' in output, got: %q", result.Stdout)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("api_token")) {
+	if !strings.Contains(result.Stdout, "api_token") {
 		t.Errorf("expected 'api_token' in output, got: %q", result.Stdout)
 	}
 	// Email should NOT appear for api_token profiles.
-	if bytes.Contains([]byte(result.Stdout), []byte("@example.com")) {
+	if strings.Contains(result.Stdout, "token@example.com") {
 		t.Errorf("email should not appear for api_token profile, got: %q", result.Stdout)
 	}
 }
@@ -222,10 +224,10 @@ func TestIntegration_List_MultipleProfiles(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("profile-one")) {
+	if !strings.Contains(result.Stdout, "profile-one") {
 		t.Errorf("expected 'profile-one' in output, got: %q", result.Stdout)
 	}
-	if !bytes.Contains([]byte(result.Stdout), []byte("profile-two")) {
+	if !strings.Contains(result.Stdout, "profile-two") {
 		t.Errorf("expected 'profile-two' in output, got: %q", result.Stdout)
 	}
 }
