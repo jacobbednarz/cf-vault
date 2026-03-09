@@ -20,8 +20,6 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "TestMain: failed to create temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmp)
-
 	binaryPath = filepath.Join(tmp, "cf-vault")
 	out, err := exec.Command("go", "build", "-o", binaryPath, "../").CombinedOutput()
 	if err != nil {
