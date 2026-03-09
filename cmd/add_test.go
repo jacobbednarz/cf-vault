@@ -44,7 +44,7 @@ func TestIntegration_Add_MissingProfileArg(t *testing.T) {
 	result := runCfVault(t, nil, "add")
 
 	if result.ExitCode == 0 {
-		t.Fatalf("expected non-zero exit for missing profile arg, got 0\nstdout: %s", result.Stdout)
+		t.Fatalf("expected non-zero exit for missing profile arg, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
 	}
 
 	combined := result.Stdout + result.Stderr
