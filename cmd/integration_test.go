@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/99designs/keyring"
 )
 
 // binaryPath holds the path to the compiled cf-vault binary used in integration tests.
@@ -286,5 +288,114 @@ func TestIntegration_Exec_NestedSessionRejected(t *testing.T) {
 	}
 	if !strings.Contains(result.Stderr, "shouldn't be nested") {
 		t.Errorf("expected nesting error message in stderr, got: %q", result.Stderr)
+	}
+}
+
+// writeKeyringItem stores a credential in the file keyring at keyringDir using the
+// same passphrase set in CF_VAULT_FILE_PASSPHRASE ("test-passphrase").
+func writeKeyringItem(t *testing.T, keyringDir, key string, data []byte) {
+	t.Helper()
+
+	cfg := keyringDefaults
+	cfg.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
+	cfg.FileDir = keyringDir + "/"
+	cfg.FilePasswordFunc = func(_ string) (string, error) {
+		return "test-passphrase", nil
+	}
+
+	ring, err := keyring.Open(cfg)
+	if err != nil {
+		t.Fatalf("writeKeyringItem: failed to open keyring: %v", err)
+	}
+	if err := ring.Set(keyring.Item{Key: key, Data: data}); err != nil {
+		t.Fatalf("writeKeyringItem: failed to set item %q: %v", key, err)
+	}
+}
+
+func TestIntegration_Exec_APIKey(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Remove the empty CLOUDFLARE_VAULT_SESSION so exec doesn't see a stale session.
+	filtered := make([]string, 0, len(envVars))
+	for _, e := range envVars {
+		if !strings.HasPrefix(e, "CLOUDFLARE_VAULT_SESSION=") {
+			filtered = append(filtered, e)
+		}
+	}
+	envVars = filtered
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.testprofile]
+    email = "user@example.com"
+    auth_type = "api_key"
+`)
+
+	// Pre-populate the keyring. Key = "{profileName}-{authType}"
+	writeKeyringItem(t, keyringDir, "testprofile-api_key", []byte("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f"))
+
+	result := runCfVault(t, envVars, "exec", "testprofile", "--", "env")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_EMAIL=user@example.com") {
+		t.Errorf("expected CLOUDFLARE_EMAIL in output, got:\n%s", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "CF_EMAIL=user@example.com") {
+		t.Errorf("expected CF_EMAIL in output, got:\n%s", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_KEY=") {
+		t.Errorf("expected CLOUDFLARE_API_KEY in output, got:\n%s", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "CF_API_KEY=") {
+		t.Errorf("expected CF_API_KEY in output, got:\n%s", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_VAULT_SESSION=testprofile") {
+		t.Errorf("expected CLOUDFLARE_VAULT_SESSION=testprofile in output, got:\n%s", result.Stdout)
+	}
+}
+
+func TestIntegration_Exec_APIToken(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	filtered := make([]string, 0, len(envVars))
+	for _, e := range envVars {
+		if !strings.HasPrefix(e, "CLOUDFLARE_VAULT_SESSION=") {
+			filtered = append(filtered, e)
+		}
+	}
+	envVars = filtered
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.tokenprofile]
+    auth_type = "api_token"
+`)
+
+	// A valid 40-char API token value.
+	writeKeyringItem(t, keyringDir, "tokenprofile-api_token", []byte("abcdefghijklmnopqrstuvwxyzABCDEF12345678"))
+
+	result := runCfVault(t, envVars, "exec", "tokenprofile", "--", "env")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN=") {
+		t.Errorf("expected CLOUDFLARE_API_TOKEN in output, got:\n%s", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "CF_API_TOKEN=") {
+		t.Errorf("expected CF_API_TOKEN in output, got:\n%s", result.Stdout)
+	}
+	// Email should NOT be set for api_token profiles.
+	if strings.Contains(result.Stdout, "CLOUDFLARE_EMAIL=") {
+		t.Errorf("CLOUDFLARE_EMAIL should not be set for api_token profile, got:\n%s", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_VAULT_SESSION=tokenprofile") {
+		t.Errorf("expected CLOUDFLARE_VAULT_SESSION=tokenprofile in output, got:\n%s", result.Stdout)
 	}
 }
