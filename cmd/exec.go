@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -15,7 +15,6 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/cloudflare/cloudflare-go"
-	"github.com/mitchellh/go-homedir"
 	"github.com/pelletier/go-toml"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -73,12 +72,13 @@ var execCmd = &cobra.Command{
 
 		log.Debug("using profile: ", profileName)
 
-		home, err := homedir.Dir()
+		configDir, err := resolveConfigDir()
 		if err != nil {
-			log.Fatal("unable to find home directory: ", err)
+			log.Fatal(err)
 		}
+		configPath := filepath.Join(configDir, "config.toml")
 
-		configData, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		configData, err := os.ReadFile(configPath)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -90,12 +90,12 @@ var execCmd = &cobra.Command{
 		}
 
 		if _, ok := config.Profiles[profileName]; !ok {
-			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, home+defaultFullConfigPath)
+			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, configPath)
 		}
 
 		profile := config.Profiles[profileName]
 
-		ring, err := keyring.Open(keyringDefaults)
+		ring, err := openKeyring()
 		if err != nil {
 			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
 		}

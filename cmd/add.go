@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -15,7 +15,6 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/99designs/keyring"
-	"github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 
 	"github.com/pelletier/go-toml"
@@ -88,21 +87,22 @@ var addCmd = &cobra.Command{
 			log.Fatal("failed to detect authentication type: ", err)
 		}
 
-		home, err := homedir.Dir()
+		configDir, err := resolveConfigDir()
 		if err != nil {
-			log.Fatal("unable to find home directory: ", err)
+			log.Fatal(err)
 		}
+		configPath := filepath.Join(configDir, "config.toml")
 
-		os.MkdirAll(home+defaultConfigDirectory, 0700)
-		if _, err := os.Stat(home + defaultFullConfigPath); os.IsNotExist(err) {
-			file, err := os.Create(home + defaultFullConfigPath)
+		os.MkdirAll(configDir, 0700)
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			file, err := os.Create(configPath)
 			if err != nil {
 				log.Fatal(err)
 			}
 			defer file.Close()
 		}
 
-		existingConfigFileContents, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		existingConfigFileContents, err := os.ReadFile(configPath)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -161,16 +161,16 @@ var addCmd = &cobra.Command{
 		log.Debugf("new profile: %+v", newProfile)
 		tomlConfigStruct.Profiles[profileName] = newProfile
 
-		configFile, err := os.OpenFile(home+defaultFullConfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
+		configFile, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
 		if err != nil {
-			log.Fatal("failed to open file at ", home+defaultFullConfigPath)
+			log.Fatal("failed to open file at ", configPath)
 		}
 		defer configFile.Close()
 		if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
 			log.Fatal(err)
 		}
 
-		ring, err := keyring.Open(keyringDefaults)
+		ring, err := openKeyring()
 		if err != nil {
 			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
 		}

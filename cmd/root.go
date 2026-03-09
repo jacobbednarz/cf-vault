@@ -14,12 +14,9 @@ var (
 	verbose                  bool
 	projectName              = "cf-vault"
 	projectNameWithoutHyphen = "cfvault"
-	defaultConfigDirectory   = "/." + projectName
-	defaultFullConfigPath    = defaultConfigDirectory + "/config.toml"
 )
 
 var keyringDefaults = keyring.Config{
-	FileDir:                  fmt.Sprintf("~/.%s/keys/", projectName),
 	FilePasswordFunc:         fileKeyringPassphrasePrompt,
 	ServiceName:              projectName,
 	KeychainName:             projectName,

@@ -2,10 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
+	"path/filepath"
 
-	"github.com/mitchellh/go-homedir"
 	"github.com/olekukonko/tablewriter"
 	"github.com/pelletier/go-toml"
 	log "github.com/sirupsen/logrus"
@@ -22,12 +21,13 @@ var listCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		home, err := homedir.Dir()
+		configDir, err := resolveConfigDir()
 		if err != nil {
-			log.Fatal("unable to find home directory: ", err)
+			log.Fatal(err)
 		}
+		configPath := filepath.Join(configDir, "config.toml")
 
-		configData, err := ioutil.ReadFile(home + defaultFullConfigPath)
+		configData, err := os.ReadFile(configPath)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -39,7 +39,7 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(config.Profiles) == 0 {
-			fmt.Printf("no profiles found at %s\n", home+defaultFullConfigPath)
+			fmt.Printf("no profiles found at %s\n", configPath)
 			os.Exit(0)
 		}
 
