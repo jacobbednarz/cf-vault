@@ -35,6 +35,9 @@ func TestEnviron_SetOverwrites(t *testing.T) {
 	if !found {
 		t.Errorf("expected FOO=baz in environ, got %v", []string(e))
 	}
+	if len(e) != 1 {
+		t.Errorf("expected 1 entry after overwrite, got %d: %v", len(e), []string(e))
+	}
 }
 
 func TestEnviron_Unset(t *testing.T) {
