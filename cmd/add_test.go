@@ -39,3 +39,17 @@ func TestDetermineAuthType_Invalid(t *testing.T) {
 		t.Errorf("unexpected error message: %s", err.Error())
 	}
 }
+
+func TestIntegration_Add_MissingProfileArg(t *testing.T) {
+	result := runCfVault(t, nil, "add")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit for missing profile arg, got 0\nstdout: %s", result.Stdout)
+	}
+
+	combined := result.Stdout + result.Stderr
+	if !strings.Contains(combined, "requires a profile argument") {
+		t.Errorf("expected 'requires a profile argument' in output, got stdout=%q stderr=%q",
+			result.Stdout, result.Stderr)
+	}
+}
