@@ -215,10 +215,15 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 		}
 	}
 
-	if policyType == "read-only" {
+	switch policyType {
+	case "read-only":
 		accountGroups = filterReadGroups(accountGroups)
 		zoneGroups = filterReadGroups(zoneGroups)
 		userGroups = filterReadGroups(userGroups)
+	case "write-everything":
+		// use all groups as-is
+	default:
+		return nil, fmt.Errorf("unable to generate policy for %q, valid policy names: [read-only, write-everything]", policyType)
 	}
 
 	if len(accountGroups) == 0 || len(zoneGroups) == 0 || len(userGroups) == 0 {
