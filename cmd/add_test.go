@@ -150,13 +150,13 @@ func newTestClient(t *testing.T, baseURL string) *cloudflare.Client {
 
 // representativeGroups covers all three recognised scopes plus an r2 group (ignored).
 var representativeGroups = []mockPermGroup{
-	{ID: "acct-dns-read",   Name: "DNS Read",          Scopes: []string{"com.cloudflare.api.account"}},
-	{ID: "acct-dns-write",  Name: "DNS Write",         Scopes: []string{"com.cloudflare.api.account"}},
-	{ID: "zone-dns-read",   Name: "DNS Read",          Scopes: []string{"com.cloudflare.api.account.zone"}},
-	{ID: "zone-dns-write",  Name: "DNS Write",         Scopes: []string{"com.cloudflare.api.account.zone"}},
-	{ID: "user-token-read", Name: "API Tokens Read",   Scopes: []string{"com.cloudflare.api.user"}},
+	{ID: "acct-dns-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account"}},
+	{ID: "acct-dns-write", Name: "DNS Write", Scopes: []string{"com.cloudflare.api.account"}},
+	{ID: "zone-dns-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account.zone"}},
+	{ID: "zone-dns-write", Name: "DNS Write", Scopes: []string{"com.cloudflare.api.account.zone"}},
+	{ID: "user-token-read", Name: "API Tokens Read", Scopes: []string{"com.cloudflare.api.user"}},
 	{ID: "user-memb-write", Name: "Memberships Write", Scopes: []string{"com.cloudflare.api.user"}},
-	{ID: "r2-read",         Name: "R2 Read",           Scopes: []string{"com.cloudflare.edge.r2.bucket"}},
+	{ID: "r2-read", Name: "R2 Read", Scopes: []string{"com.cloudflare.edge.r2.bucket"}},
 }
 
 func TestGeneratePolicy_ReadOnly(t *testing.T) {
@@ -247,7 +247,7 @@ func TestGeneratePolicy_UnknownType(t *testing.T) {
 func TestGeneratePolicy_EmptyBucket(t *testing.T) {
 	// Only account and user groups — no zone groups — so read-only zone bucket is empty.
 	groups := []mockPermGroup{
-		{ID: "acct-read", Name: "DNS Read",        Scopes: []string{"com.cloudflare.api.account"}},
+		{ID: "acct-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account"}},
 		{ID: "user-read", Name: "API Tokens Read", Scopes: []string{"com.cloudflare.api.user"}},
 	}
 	srv := newMockPermGroupServer(t, groups)
