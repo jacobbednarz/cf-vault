@@ -120,7 +120,7 @@ var execCmd = &cobra.Command{
 		} else {
 			cfClient := newClient(string(keychain.Data), profile.AuthType, profile.Email)
 
-			var tokenPolicies []shared.TokenPolicyParam
+			tokenPolicies := []shared.TokenPolicyParam{}
 			for _, p := range profile.Policies {
 				var groups []shared.TokenPolicyPermissionGroupParam
 				for _, g := range p.PermissionGroups {
