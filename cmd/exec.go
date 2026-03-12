@@ -14,7 +14,9 @@ import (
 	"os/exec"
 
 	"github.com/99designs/keyring"
-	"github.com/cloudflare/cloudflare-go"
+	"github.com/cloudflare/cloudflare-go/v6"
+	"github.com/cloudflare/cloudflare-go/v6/shared"
+	"github.com/cloudflare/cloudflare-go/v6/user"
 	"github.com/pelletier/go-toml"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -116,34 +118,28 @@ var execCmd = &cobra.Command{
 			env.Set(fmt.Sprintf("CLOUDFLARE_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
 			env.Set(fmt.Sprintf("CF_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
 		} else {
-			var api *cloudflare.API
-			if profile.AuthType == "api_token" {
-				api, err = cloudflare.NewWithAPIToken(string(keychain.Data))
-				if err != nil {
-					log.Fatal(err)
-				}
-			} else {
-				api, err = cloudflare.New(string(keychain.Data), profile.Email)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
+			cfClient := newClient(string(keychain.Data), profile.AuthType, profile.Email)
 
-			policies := []cloudflare.APITokenPolicies{}
-
-			for _, policy := range profile.Policies {
-				permissionGroups := []cloudflare.APITokenPermissionGroups{}
-				for _, group := range policy.PermissionGroups {
-					permissionGroups = append(permissionGroups, cloudflare.APITokenPermissionGroups{
-						ID:   group.ID,
-						Name: group.Name,
+			var tokenPolicies []shared.TokenPolicyParam
+			for _, p := range profile.Policies {
+				var groups []shared.TokenPolicyPermissionGroupParam
+				for _, g := range p.PermissionGroups {
+					groups = append(groups, shared.TokenPolicyPermissionGroupParam{
+						ID: cloudflare.F(g.ID),
 					})
 				}
-
-				policies = append(policies, cloudflare.APITokenPolicies{
-					Effect:           policy.Effect,
-					Resources:        policy.Resources,
-					PermissionGroups: permissionGroups,
+				resources := shared.TokenPolicyResourcesIAMResourcesTypeObjectStringParam{}
+				for k, v := range p.Resources {
+					if s, ok := v.(string); ok {
+						resources[k] = s
+					} else {
+						resources[k] = fmt.Sprintf("%v", v)
+					}
+				}
+				tokenPolicies = append(tokenPolicies, shared.TokenPolicyParam{
+					Effect:           cloudflare.F(shared.TokenPolicyEffect(p.Effect)),
+					PermissionGroups: cloudflare.F(groups),
+					Resources:        cloudflare.F[shared.TokenPolicyResourcesUnionParam](resources),
 				})
 			}
 
@@ -154,14 +150,12 @@ var execCmd = &cobra.Command{
 			now, _ := time.Parse(time.RFC3339, time.Now().UTC().Format(time.RFC3339))
 			tokenExpiry := now.Add(time.Second * time.Duration(parsedSessionDuration.Seconds()))
 
-			token := cloudflare.APIToken{
-				Name:      fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix()),
-				NotBefore: &now,
-				ExpiresOn: &tokenExpiry,
-				Policies:  policies,
-			}
-
-			shortLivedToken, err := api.CreateAPIToken(context.Background(), token)
+			shortLivedToken, err := cfClient.User.Tokens.New(context.Background(), user.TokenNewParams{
+				Name:      cloudflare.F(fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix())),
+				NotBefore: cloudflare.F(now),
+				ExpiresOn: cloudflare.F(tokenExpiry),
+				Policies:  cloudflare.F(tokenPolicies),
+			})
 			if err != nil {
 				log.Fatalf("failed to create API token: %s", err)
 			}
