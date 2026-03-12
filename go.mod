@@ -17,6 +17,7 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
+	github.com/cloudflare/cloudflare-go/v6 v6.8.0 // indirect
 	github.com/danieljoos/wincred v1.0.2 // indirect
 	github.com/dvsekhvalnov/jose2go v1.7.0 // indirect
 	github.com/fatih/camelcase v1.0.0 // indirect
@@ -34,6 +35,10 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/stretchr/objx v0.4.0 // indirect
+	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
