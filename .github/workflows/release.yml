@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag to release, for example 0.0.19"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - name: Validate release tag
+        env:
+          TAG: ${{ github.event.inputs.ref || github.ref_name }}
+        run: |
+          case "$TAG" in
+            v*) version="${TAG#v}" ;;
+            *) version="$TAG" ;;
+          esac
+
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "release tag must be a semantic version, optionally prefixed with v"
+            exit 1
+          fi
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Lint
+        run: |
+          go generate -tags tools tools/tools.go
+          $(go env GOPATH)/bin/golint -set_exit_status .
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -v -race ./...
+
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            runs-on: macos-15-intel
+          - goos: darwin
+            goarch: arm64
+            runs-on: macos-15
+          - goos: linux
+            goarch: amd64
+            runs-on: ubuntu-latest
+          - goos: windows
+            goarch: amd64
+            runs-on: windows-latest
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          install-only: true
+      - name: Verify native build target
+        shell: bash
+        run: |
+          test "$(go env GOHOSTOS)" = "${{ matrix.goos }}"
+          test "$(go env GOHOSTARCH)" = "${{ matrix.goarch }}"
+      - name: Build archive
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          tag="${{ github.event.inputs.ref || github.ref_name }}"
+          version="${tag#v}"
+          output="cf-vault_${version}_${GOOS}_${GOARCH}"
+
+          mkdir -p dist
+          if [ "$GOOS" = "windows" ]; then
+            goreleaser build --single-target --output "dist/${output}.exe"
+            tar -czf "dist/${output}.tar.gz" -C dist "${output}.exe"
+          else
+            goreleaser build --single-target --output "dist/${output}"
+            tar -czf "dist/${output}.tar.gz" -C dist "${output}"
+          fi
+      - name: Upload archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: cf-vault-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: cf-vault-*
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: dist
+        run: shasum -a 256 -- *.tar.gz > checksums.txt
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.ref || github.ref_name }}
+        run: gh release create "$TAG" dist/*.tar.gz dist/checksums.txt --title "$TAG" --generate-notes --verify-tag
+
+  homebrew:
+    name: bump Homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: cf-vault
+          formula-path: Formula/cf-vault.rb
+          homebrew-tap: jacobbednarz/homebrew-tap
+          tag-name: ${{ github.event.inputs.ref || github.ref_name }}
+          download-url: https://github.com/jacobbednarz/cf-vault/archive/refs/tags/${{ github.event.inputs.ref || github.ref_name }}.tar.gz
+          commit-message: |
+            Updates {{formulaName}} to {{version}}
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_UPDATER_PAT }}

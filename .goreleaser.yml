@@ -1,3 +1,5 @@
+version: 2
+
 builds:
   - env:
       - CGO_ENABLED=0
@@ -16,10 +18,11 @@ builds:
       - linux
       - windows
 archives:
-  - format: zip
+  - formats:
+      - zip
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
 changelog:
-  skip: true
+  disable: true
