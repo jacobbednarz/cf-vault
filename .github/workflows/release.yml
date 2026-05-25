@@ -146,7 +146,7 @@ jobs:
           formula-path: Formula/cf-vault.rb
           homebrew-tap: jacobbednarz/homebrew-tap
           tag-name: ${{ github.event.inputs.ref || github.ref_name }}
-          download-url: https://github.com/jacobbednarz/cf-vault/archive/refs/tags/${{ github.event.inputs.ref || github.ref_name }}.tar.gz
+          download-url: https://codeload.github.com/jacobbednarz/cf-vault/tar.gz/refs/tags/${{ github.event.inputs.ref || github.ref_name }}
           commit-message: |
             Updates {{formulaName}} to {{version}}
         env:
