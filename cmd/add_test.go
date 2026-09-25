@@ -152,9 +152,11 @@ func newTestClient(t *testing.T, baseURL string) *cloudflare.Client {
 var representativeGroups = []mockPermGroup{
 	{ID: "acct-dns-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account"}},
 	{ID: "acct-dns-write", Name: "DNS Write", Scopes: []string{"com.cloudflare.api.account"}},
+	{ID: "acct-token-write", Name: "Account API Tokens Write", Scopes: []string{"com.cloudflare.api.account"}},
 	{ID: "zone-dns-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account.zone"}},
 	{ID: "zone-dns-write", Name: "DNS Write", Scopes: []string{"com.cloudflare.api.account.zone"}},
 	{ID: "user-token-read", Name: "API Tokens Read", Scopes: []string{"com.cloudflare.api.user"}},
+	{ID: "user-token-write", Name: "API Tokens Write", Scopes: []string{"com.cloudflare.api.user"}},
 	{ID: "user-memb-write", Name: "Memberships Write", Scopes: []string{"com.cloudflare.api.user"}},
 	{ID: "r2-read", Name: "R2 Read", Scopes: []string{"com.cloudflare.edge.r2.bucket"}},
 }
@@ -227,6 +229,18 @@ func TestGeneratePolicy_WriteEverything(t *testing.T) {
 		}
 		if !hasWrite {
 			t.Errorf("policy[%d]: write-everything should include Write groups but none found", i)
+		}
+	}
+
+	// No bucket may carry an `API Tokens *` permission — Cloudflare rejects
+	// POST /user/tokens with 1001 when a sub-token would be granted permissions
+	// to manage other tokens, regardless of whether the perm lives in the User
+	// or Account scope.
+	for _, p := range policies {
+		for _, g := range p.PermissionGroups {
+			if strings.Contains(g.Name, "API Tokens") {
+				t.Errorf("policy for %v contains %q, which cannot be delegated to a sub-token", p.Resources, g.Name)
+			}
 		}
 	}
 }

@@ -221,7 +221,13 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 		zoneGroups = filterReadGroups(zoneGroups)
 		userGroups = filterReadGroups(userGroups)
 	case "write-everything":
-		// use all groups as-is
+		// Cloudflare refuses POST /user/tokens when the new token would carry
+		// token-management permissions of its own ("sub-token is not allowed to
+		// have permissions to manage other tokens", code 1001). The rule applies
+		// regardless of scope, so filter both the User bucket ("API Tokens
+		// Read/Write") and the Account bucket ("Account API Tokens Read/Write").
+		accountGroups = filterAPITokensGroups(accountGroups)
+		userGroups = filterAPITokensGroups(userGroups)
 	default:
 		return nil, fmt.Errorf("unable to generate policy for %q, valid policy names: [read-only, write-everything]", policyType)
 	}
@@ -255,6 +261,17 @@ func filterReadGroups(groups []permissionGroup) []permissionGroup {
 		if strings.Contains(g.Name, "Read") {
 			out = append(out, g)
 		}
+	}
+	return out
+}
+
+func filterAPITokensGroups(groups []permissionGroup) []permissionGroup {
+	var out []permissionGroup
+	for _, g := range groups {
+		if strings.Contains(g.Name, "API Tokens") {
+			continue
+		}
+		out = append(out, g)
 	}
 	return out
 }
