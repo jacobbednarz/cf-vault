@@ -29,6 +29,7 @@ type profile struct {
 	Email           string   `toml:"email"`
 	AuthType        string   `toml:"auth_type"`
 	SessionDuration string   `toml:"session_duration,omitempty"`
+	SecretBackend   string   `toml:"secret_backend,omitempty"`
 	Policies        []policy `toml:"policies,omitempty"`
 }
 
@@ -69,6 +70,16 @@ var addCmd = &cobra.Command{
 		profileName := strings.TrimSpace(args[0])
 		sessionDuration, _ := cmd.Flags().GetString("session-duration")
 		profileTemplate, _ := cmd.Flags().GetString("profile-template")
+		useSecureEnclave, _ := cmd.Flags().GetBool("secure-enclave")
+		useYubikey, _ := cmd.Flags().GetBool("yubikey")
+
+		var secretBackend string
+		switch {
+		case useSecureEnclave:
+			secretBackend = secretBackendAgeSE
+		case useYubikey:
+			secretBackend = secretBackendAgeYubikey
+		}
 
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Email address: ")
@@ -127,6 +138,10 @@ var addCmd = &cobra.Command{
 			log.Debug("session-duration was not set, not using short lived tokens")
 		}
 
+		if secretBackend != "" {
+			newProfile.SecretBackend = secretBackend
+		}
+
 		var cfClient *cloudflare.Client
 		if profileTemplate != "" {
 			cfClient = newClient(authValue, authType, emailAddress)
@@ -152,8 +167,39 @@ var addCmd = &cobra.Command{
 		}
 
 		log.Debugf("new profile: %+v", newProfile)
-		tomlConfigStruct.Profiles[profileName] = newProfile
 
+		// Persist the credential first — if storage fails we don't want an
+		// orphaned profile entry in config.toml pointing at nothing.
+		var successMessage string
+		switch secretBackend {
+		case secretBackendAgeSE, secretBackendAgeYubikey:
+			recipient, err := ensureAgeIdentity(configDir, secretBackend)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err := encryptWithAge(recipient, ageSecretPath(configDir, profileName), []byte(authValue)); err != nil {
+				log.Fatal(err)
+			}
+			if secretBackend == secretBackendAgeSE {
+				successMessage = "\nSuccess! Credentials encrypted to the Secure Enclave and are now ready for use!"
+			} else {
+				successMessage = "\nSuccess! Credentials encrypted to a YubiKey identity and are now ready for use!"
+			}
+		default:
+			ring, err := openKeyring()
+			if err != nil {
+				log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+			}
+			if err := ring.Set(keyring.Item{
+				Key:  fmt.Sprintf("%s-%s", profileName, authType),
+				Data: []byte(authValue),
+			}); err != nil {
+				log.Fatal("Error adding credentials to keyring: ", err)
+			}
+			successMessage = "\nSuccess! Credentials have been set and are now ready for use!"
+		}
+
+		tomlConfigStruct.Profiles[profileName] = newProfile
 		configFile, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
 		if err != nil {
 			log.Fatal("failed to open file at ", configPath)
@@ -163,22 +209,7 @@ var addCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		ring, err := openKeyring()
-		if err != nil {
-			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
-		}
-
-		resp := ring.Set(keyring.Item{
-			Key:  fmt.Sprintf("%s-%s", profileName, authType),
-			Data: []byte(authValue),
-		})
-
-		if resp == nil {
-			fmt.Println("\nSuccess! Credentials have been set and are now ready for use!")
-		} else {
-			// error of some sort
-			log.Fatal("Error adding credentials to keyring: ", resp)
-		}
+		fmt.Println(successMessage)
 	},
 }
 

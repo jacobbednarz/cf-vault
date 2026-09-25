@@ -97,14 +97,25 @@ var execCmd = &cobra.Command{
 
 		profile := config.Profiles[profileName]
 
-		ring, err := openKeyring()
-		if err != nil {
-			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
-		}
+		var secret []byte
+		switch profile.SecretBackend {
+		case secretBackendAgeSE, secretBackendAgeYubikey:
+			plaintext, err := decryptWithAge(ageIdentityPath(configDir, profile.SecretBackend), ageSecretPath(configDir, profileName))
+			if err != nil {
+				log.Fatalf("failed to decrypt secret (%s): %s", profile.SecretBackend, err)
+			}
+			secret = plaintext
+		default:
+			ring, err := openKeyring()
+			if err != nil {
+				log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+			}
 
-		keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profile.AuthType))
-		if err != nil {
-			log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
+			keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profile.AuthType))
+			if err != nil {
+				log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
+			}
+			secret = keychain.Data
 		}
 
 		env.Set("CLOUDFLARE_VAULT_SESSION", profileName)
@@ -115,10 +126,10 @@ var execCmd = &cobra.Command{
 				env.Set("CLOUDFLARE_EMAIL", profile.Email)
 				env.Set("CF_EMAIL", profile.Email)
 			}
-			env.Set(fmt.Sprintf("CLOUDFLARE_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
-			env.Set(fmt.Sprintf("CF_%s", strings.ToUpper(profile.AuthType)), string(keychain.Data))
+			env.Set(fmt.Sprintf("CLOUDFLARE_%s", strings.ToUpper(profile.AuthType)), string(secret))
+			env.Set(fmt.Sprintf("CF_%s", strings.ToUpper(profile.AuthType)), string(secret))
 		} else {
-			cfClient := newClient(string(keychain.Data), profile.AuthType, profile.Email)
+			cfClient := newClient(string(secret), profile.AuthType, profile.Email)
 
 			tokenPolicies := []shared.TokenPolicyParam{}
 			for _, p := range profile.Policies {
