@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,7 +55,7 @@ var addCmd = &cobra.Command{
 `,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return errors.New("requires a profile argument")
+			return errProfileArgRequired
 		}
 		return nil
 	},
@@ -71,10 +70,10 @@ var addCmd = &cobra.Command{
 		if err := validateProfileName(profileName); err != nil {
 			log.Fatal(err)
 		}
-		sessionDuration, _ := cmd.Flags().GetString("session-duration")
-		profileTemplate, _ := cmd.Flags().GetString("profile-template")
-		useSecureEnclave, _ := cmd.Flags().GetBool("secure-enclave")
-		useYubikey, _ := cmd.Flags().GetBool("yubikey")
+		sessionDuration, _ := cmd.Flags().GetString(flagSessionDuration)
+		profileTemplate, _ := cmd.Flags().GetString(flagProfileTemplate)
+		useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
+		useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
 
 		var secretBackend string
 		switch {
@@ -85,28 +84,28 @@ var addCmd = &cobra.Command{
 		}
 
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Email address: ")
+		fmt.Print(promptEmailAddress)
 		emailAddress, _ := reader.ReadString('\n')
 		emailAddress = strings.TrimSpace(emailAddress)
 
-		fmt.Print("Authentication value (API key or API token): ")
+		fmt.Print(promptAuthValue)
 		byteAuthValue, err := term.ReadPassword(int(os.Stdin.Fd()))
 		if err != nil {
-			log.Fatal("unable to read authentication value: ", err)
+			log.Fatalf(errFmtReadAuthValue, err)
 		}
 		authValue := string(byteAuthValue)
 		fmt.Println()
 
 		authType, err := determineAuthType(strings.TrimSpace(authValue))
 		if err != nil {
-			log.Fatal("failed to detect authentication type: ", err)
+			log.Fatalf(errFmtDetectAuthType, err)
 		}
 
 		configDir, err := resolveConfigDir()
 		if err != nil {
 			log.Fatal(err)
 		}
-		configPath := filepath.Join(configDir, "config.toml")
+		configPath := filepath.Join(configDir, configFileName)
 
 		os.MkdirAll(configDir, 0700)
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
@@ -159,7 +158,7 @@ var addCmd = &cobra.Command{
 			userDetails, err := cfClient.User.Get(context.Background())
 			if err != nil {
 				log.Debug(err)
-				log.Fatal("failed to fetch user ID from the Cloudflare API which is required to generate the predefined short lived token policies. If you are using API tokens, please allow the permission to access your user details and try again.")
+				log.Fatal(errMsgUserFetchForPolicy)
 			}
 
 			generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, userDetails.ID)
@@ -184,28 +183,28 @@ var addCmd = &cobra.Command{
 				log.Fatal(err)
 			}
 			if secretBackend == secretBackendAgeSE {
-				successMessage = "\nSuccess! Credentials encrypted to the Secure Enclave and are now ready for use!"
+				successMessage = msgSuccessSecureEnclave
 			} else {
-				successMessage = "\nSuccess! Credentials encrypted to a YubiKey identity and are now ready for use!"
+				successMessage = msgSuccessYubikey
 			}
 		default:
 			ring, err := openKeyring()
 			if err != nil {
-				log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+				log.Fatalf(errFmtOpenKeyring, strings.ToLower(err.Error()))
 			}
 			if err := ring.Set(keyring.Item{
 				Key:  fmt.Sprintf("%s-%s", profileName, authType),
 				Data: []byte(authValue),
 			}); err != nil {
-				log.Fatal("Error adding credentials to keyring: ", err)
+				log.Fatalf(errFmtAddKeyringItem, err)
 			}
-			successMessage = "\nSuccess! Credentials have been set and are now ready for use!"
+			successMessage = msgSuccessKeyring
 		}
 
 		tomlConfigStruct.Profiles[profileName] = newProfile
 		configFile, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
 		if err != nil {
-			log.Fatal("failed to open file at ", configPath)
+			log.Fatalf(errFmtOpenConfigFile, configPath)
 		}
 		defer configFile.Close()
 		if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
@@ -225,10 +224,10 @@ var profileNameRE = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]*$`)
 
 func validateProfileName(name string) error {
 	if name == "" {
-		return errors.New("profile name must not be empty")
+		return errProfileNameEmpty
 	}
 	if !profileNameRE.MatchString(name) {
-		return fmt.Errorf("profile name %q is invalid; use only letters, digits, `.`, `_`, `-`, and do not start with `.`", name)
+		return fmt.Errorf(errFmtInvalidProfileName, name)
 	}
 	return nil
 }
@@ -236,19 +235,19 @@ func validateProfileName(name string) error {
 func determineAuthType(s string) (string, error) {
 	if apiTokenMatch, _ := regexp.MatchString("[A-Za-z0-9-_]{40}", s); apiTokenMatch {
 		log.Debug("API token detected")
-		return "api_token", nil
+		return authTypeAPIToken, nil
 	} else if apiKeyMatch, _ := regexp.MatchString("[0-9a-f]{37}", s); apiKeyMatch {
 		log.Debug("API key detected")
-		return "api_key", nil
+		return authTypeAPIKey, nil
 	} else {
-		return "", errors.New("invalid API token or API key format")
+		return "", errInvalidAuthValueFormat
 	}
 }
 
 func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, userID string) ([]policy, error) {
 	page, err := client.User.Tokens.PermissionGroups.List(ctx, user.TokenPermissionGroupListParams{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch permission groups: %w", err)
+		return nil, fmt.Errorf(errFmtFetchPermissionGroups, err)
 	}
 
 	var accountGroups, zoneGroups, userGroups []permissionGroup
@@ -267,11 +266,11 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 	}
 
 	switch policyType {
-	case "read-only":
+	case policyTemplateReadOnly:
 		accountGroups = filterReadGroups(accountGroups)
 		zoneGroups = filterReadGroups(zoneGroups)
 		userGroups = filterReadGroups(userGroups)
-	case "write-everything":
+	case policyTemplateWriteEverything:
 		// Cloudflare refuses POST /user/tokens when the new token would carry
 		// token-management permissions of its own ("sub-token is not allowed to
 		// have permissions to manage other tokens", code 1001). The rule applies
@@ -280,27 +279,27 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 		accountGroups = filterAPITokensGroups(accountGroups)
 		userGroups = filterAPITokensGroups(userGroups)
 	default:
-		return nil, fmt.Errorf("unable to generate policy for %q, valid policy names: [read-only, write-everything]", policyType)
+		return nil, fmt.Errorf(errFmtUnknownPolicyTemplate, policyType)
 	}
 
 	if len(accountGroups) == 0 || len(zoneGroups) == 0 || len(userGroups) == 0 {
-		return nil, fmt.Errorf("one or more policy buckets is empty for policy type %q (account=%d, zone=%d, user=%d); check API permissions", policyType, len(accountGroups), len(zoneGroups), len(userGroups))
+		return nil, fmt.Errorf(errFmtEmptyPolicyBucket, policyType, len(accountGroups), len(zoneGroups), len(userGroups))
 	}
 
 	return []policy{
 		{
-			Effect:           "allow",
-			Resources:        map[string]interface{}{"com.cloudflare.api.account.*": "*"},
+			Effect:           policyEffectAllow,
+			Resources:        map[string]interface{}{policyResourceAllAccounts: "*"},
 			PermissionGroups: accountGroups,
 		},
 		{
-			Effect:           "allow",
-			Resources:        map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+			Effect:           policyEffectAllow,
+			Resources:        map[string]interface{}{policyResourceAllZones: "*"},
 			PermissionGroups: zoneGroups,
 		},
 		{
-			Effect:           "allow",
-			Resources:        map[string]interface{}{"com.cloudflare.api.user." + userID: "*"},
+			Effect:           policyEffectAllow,
+			Resources:        map[string]interface{}{policyResourceUserPrefix + userID: "*"},
 			PermissionGroups: userGroups,
 		},
 	}, nil

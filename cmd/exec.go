@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,7 +47,7 @@ var execCmd = &cobra.Command{
 `,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return errors.New("requires a profile argument")
+			return errProfileArgRequired
 		}
 		return nil
 	},
@@ -71,8 +70,8 @@ var execCmd = &cobra.Command{
 		args = args[:len(args)-1]
 
 		// Don't allow nesting of cf-vault sessions, it gets messy.
-		if os.Getenv("CLOUDFLARE_VAULT_SESSION") != "" {
-			log.Fatal("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
+		if os.Getenv(envVaultSession) != "" {
+			log.Fatal(errNestedSession)
 		}
 
 		log.Debug("using profile: ", profileName)
@@ -81,7 +80,7 @@ var execCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		configPath := filepath.Join(configDir, "config.toml")
+		configPath := filepath.Join(configDir, configFileName)
 
 		configData, err := os.ReadFile(configPath)
 		if err != nil {
@@ -95,7 +94,7 @@ var execCmd = &cobra.Command{
 		}
 
 		if _, ok := config.Profiles[profileName]; !ok {
-			log.Fatalf("no profile matching %q found in the configuration file at %s", profileName, configPath)
+			log.Fatalf(errFmtProfileNotFound, profileName, configPath)
 		}
 
 		profile := config.Profiles[profileName]
@@ -105,34 +104,34 @@ var execCmd = &cobra.Command{
 		case secretBackendAgeSE, secretBackendAgeYubikey:
 			plaintext, err := decryptWithAge(ageIdentityPath(configDir, profile.SecretBackend), ageSecretPath(configDir, profileName))
 			if err != nil {
-				log.Fatalf("failed to decrypt secret (%s): %s", profile.SecretBackend, err)
+				log.Fatalf(errFmtDecryptAgeBackend, profile.SecretBackend, err)
 			}
 			secret = plaintext
 		case "":
 			ring, err := openKeyring()
 			if err != nil {
-				log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+				log.Fatalf(errFmtOpenKeyring, strings.ToLower(err.Error()))
 			}
 
 			keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profile.AuthType))
 			if err != nil {
-				log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
+				log.Fatalf(errFmtGetKeyringItem, strings.ToLower(err.Error()))
 			}
 			secret = keychain.Data
 		default:
-			log.Fatalf("profile %q has unknown secret_backend %q; valid values are %q, %q, or unset for keychain", profileName, profile.SecretBackend, secretBackendAgeSE, secretBackendAgeYubikey)
+			log.Fatalf(errFmtUnknownSecretBackend, profileName, profile.SecretBackend, secretBackendAgeSE, secretBackendAgeYubikey)
 		}
 
-		env.Set("CLOUDFLARE_VAULT_SESSION", profileName)
+		env.Set(envVaultSession, profileName)
 
 		// Not using short lived tokens so set the static API token or API key.
 		if profile.SessionDuration == "" {
-			if profile.AuthType == "api_key" {
-				env.Set("CLOUDFLARE_EMAIL", profile.Email)
-				env.Set("CF_EMAIL", profile.Email)
+			if profile.AuthType == authTypeAPIKey {
+				env.Set(envCloudflareEmail, profile.Email)
+				env.Set(envCFEmail, profile.Email)
 			}
-			env.Set(fmt.Sprintf("CLOUDFLARE_%s", strings.ToUpper(profile.AuthType)), string(secret))
-			env.Set(fmt.Sprintf("CF_%s", strings.ToUpper(profile.AuthType)), string(secret))
+			env.Set(envPrefixCloudflare+strings.ToUpper(profile.AuthType), string(secret))
+			env.Set(envPrefixCF+strings.ToUpper(profile.AuthType), string(secret))
 		} else {
 			cfClient := newClient(string(secret), profile.AuthType, profile.Email)
 
@@ -173,28 +172,28 @@ var execCmd = &cobra.Command{
 				Policies:  cloudflare.F(tokenPolicies),
 			})
 			if err != nil {
-				log.Fatalf("failed to create API token: %s", err)
+				log.Fatalf(errFmtCreateAPIToken, err)
 			}
 
 			if shortLivedToken.Value != "" {
-				env.Set("CLOUDFLARE_API_TOKEN", shortLivedToken.Value)
-				env.Set("CF_API_TOKEN", shortLivedToken.Value)
+				env.Set(envCloudflareAPIToken, shortLivedToken.Value)
+				env.Set(envCFAPIToken, shortLivedToken.Value)
 			}
 
-			env.Set("CLOUDFLARE_SESSION_EXPIRY", strconv.Itoa(int(tokenExpiry.Unix())))
+			env.Set(envCloudflareSessionExpiry, strconv.Itoa(int(tokenExpiry.Unix())))
 		}
 
 		// Should a command not be provided, drop into a fresh shell with the
 		// credentials populated alongside the existing env.
 		if len(args) == 0 {
 			log.Debug("launching new shell with credentials populated")
-			syscall.Exec(os.Getenv("SHELL"), []string{os.Getenv("SHELL")}, env)
+			syscall.Exec(os.Getenv(envShell), []string{os.Getenv(envShell)}, env)
 		}
 
 		executable := args[0]
 		pathtoExec, err := exec.LookPath(executable)
 		if err != nil {
-			log.Fatalf("couldn't find the executable '%s': %s", pathtoExec, err.Error())
+			log.Fatalf(errFmtExecutableNotFound, pathtoExec, err.Error())
 		}
 
 		log.Debugf("found executable %s", pathtoExec)

@@ -7,7 +7,7 @@ import (
 
 // newClient constructs a cloudflare-go/v6 client from the stored auth credentials.
 func newClient(authValue, authType, email string) *cloudflare.Client {
-	if authType == "api_token" {
+	if authType == authTypeAPIToken {
 		return cloudflare.NewClient(option.WithAPIToken(authValue))
 	}
 	return cloudflare.NewClient(

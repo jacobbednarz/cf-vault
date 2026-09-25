@@ -25,7 +25,7 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		configPath := filepath.Join(configDir, "config.toml")
+		configPath := filepath.Join(configDir, configFileName)
 
 		configData, err := os.ReadFile(configPath)
 		if err != nil {
@@ -39,7 +39,7 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(config.Profiles) == 0 {
-			fmt.Printf("no profiles found at %s\n", configPath)
+			fmt.Printf(msgFmtNoProfilesFound, configPath)
 			os.Exit(0)
 		}
 
@@ -48,7 +48,7 @@ var listCmd = &cobra.Command{
 			// Only display the email if we're using API tokens otherwise the value is
 			// not used and pretty superfluous.
 			var emailString string
-			if profile.AuthType == "api_key" {
+			if profile.AuthType == authTypeAPIKey {
 				emailString = profile.Email
 			}
 

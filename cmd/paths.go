@@ -17,19 +17,16 @@ import (
 func resolveConfigDir() (string, error) {
 	home, err := homedir.Dir()
 	if err != nil {
-		return "", fmt.Errorf("unable to find home directory: %w", err)
+		return "", fmt.Errorf(errFmtHomeDirNotFound, err)
 	}
 
 	legacyDir := filepath.Join(home, "."+projectName)
 
-	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	xdgConfigHome := os.Getenv(envXDGConfigHome)
 	if xdgConfigHome != "" {
 		xdgDir := filepath.Join(xdgConfigHome, projectName)
 		if _, statErr := os.Stat(legacyDir); statErr == nil {
-			fmt.Fprintf(os.Stderr,
-				"Warning: XDG directories are configured but legacy data exists at %s. "+
-					"Consider migrating your config and keys to the new XDG-compliant locations.\n",
-				legacyDir)
+			fmt.Fprintf(os.Stderr, msgFmtLegacyConfigWarning, legacyDir)
 		}
 		return xdgDir, nil
 	}
@@ -43,15 +40,15 @@ func resolveConfigDir() (string, error) {
 func resolveKeyringDir() (string, error) {
 	home, err := homedir.Dir()
 	if err != nil {
-		return "", fmt.Errorf("unable to find home directory: %w", err)
+		return "", fmt.Errorf(errFmtHomeDirNotFound, err)
 	}
 
-	xdgDataHome := os.Getenv("XDG_DATA_HOME")
+	xdgDataHome := os.Getenv(envXDGDataHome)
 	if xdgDataHome != "" {
-		return filepath.Join(xdgDataHome, projectName, "keys"), nil
+		return filepath.Join(xdgDataHome, projectName, keyringDirName), nil
 	}
 
-	return filepath.Join(home, "."+projectName, "keys"), nil
+	return filepath.Join(home, "."+projectName, keyringDirName), nil
 }
 
 // openKeyring opens the keyring backend with paths resolved via resolveKeyringDir.
@@ -66,7 +63,7 @@ func openKeyring() (keyring.Keyring, error) {
 	cfg := keyringDefaults
 	cfg.FileDir = keyringDir + "/"
 
-	if backend := os.Getenv("CF_VAULT_BACKEND"); backend != "" {
+	if backend := os.Getenv(envKeyringBackend); backend != "" {
 		cfg.AllowedBackends = []keyring.BackendType{keyring.BackendType(backend)}
 	}
 
