@@ -62,6 +62,9 @@ var execCmd = &cobra.Command{
 		env := environ(os.Environ())
 
 		profileName := args[0]
+		if err := validateProfileName(profileName); err != nil {
+			log.Fatal(err)
+		}
 		// Remove the extra executable name at the beginning of the slice.
 		copy(args[0:], args[0+1:])
 		args[len(args)-1] = ""
@@ -105,7 +108,7 @@ var execCmd = &cobra.Command{
 				log.Fatalf("failed to decrypt secret (%s): %s", profile.SecretBackend, err)
 			}
 			secret = plaintext
-		default:
+		case "":
 			ring, err := openKeyring()
 			if err != nil {
 				log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
@@ -116,6 +119,8 @@ var execCmd = &cobra.Command{
 				log.Fatalf("failed to get item from keyring: %s", strings.ToLower(err.Error()))
 			}
 			secret = keychain.Data
+		default:
+			log.Fatalf("profile %q has unknown secret_backend %q; valid values are %q, %q, or unset for keychain", profileName, profile.SecretBackend, secretBackendAgeSE, secretBackendAgeYubikey)
 		}
 
 		env.Set("CLOUDFLARE_VAULT_SESSION", profileName)

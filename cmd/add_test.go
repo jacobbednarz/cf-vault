@@ -36,6 +36,32 @@ func TestDetermineAuthType_APIKey(t *testing.T) {
 	}
 }
 
+func TestValidateProfileName(t *testing.T) {
+	valid := []string{"work", "read-only", "profile.2", "a_b-c.d", "MixedCase123"}
+	for _, name := range valid {
+		if err := validateProfileName(name); err != nil {
+			t.Errorf("expected %q to be valid, got error: %v", name, err)
+		}
+	}
+
+	invalid := []string{
+		"",              // empty
+		".hidden",       // leading dot
+		"..",            // parent directory
+		"../evil",       // traversal
+		"foo/bar",       // path separator
+		`foo\bar`,       // windows separator
+		"foo bar",       // whitespace
+		"foo\x00bar",    // control character
+		"a$b",           // shell metacharacter
+	}
+	for _, name := range invalid {
+		if err := validateProfileName(name); err == nil {
+			t.Errorf("expected %q to be rejected, got no error", name)
+		}
+	}
+}
+
 func TestDetermineAuthType_Invalid(t *testing.T) {
 	_, err := determineAuthType("tooshort")
 	if err == nil {

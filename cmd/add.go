@@ -68,6 +68,9 @@ var addCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		profileName := strings.TrimSpace(args[0])
+		if err := validateProfileName(profileName); err != nil {
+			log.Fatal(err)
+		}
 		sessionDuration, _ := cmd.Flags().GetString("session-duration")
 		profileTemplate, _ := cmd.Flags().GetString("profile-template")
 		useSecureEnclave, _ := cmd.Flags().GetBool("secure-enclave")
@@ -211,6 +214,23 @@ var addCmd = &cobra.Command{
 
 		fmt.Println(successMessage)
 	},
+}
+
+// profileNameRE restricts profile names to a filesystem-safe subset. Profile
+// names flow into filesystem paths (secrets/<name>.age, keyring keys) and
+// TOML section names, so `..`, path separators, and leading dots must be
+// rejected to prevent a crafted name from escaping the config directory or
+// creating hidden files.
+var profileNameRE = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]*$`)
+
+func validateProfileName(name string) error {
+	if name == "" {
+		return errors.New("profile name must not be empty")
+	}
+	if !profileNameRE.MatchString(name) {
+		return fmt.Errorf("profile name %q is invalid; use only letters, digits, `.`, `_`, `-`, and do not start with `.`", name)
+	}
+	return nil
 }
 
 func determineAuthType(s string) (string, error) {
