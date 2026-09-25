@@ -45,7 +45,7 @@ var rootCmd = &cobra.Command{
 
 // Get passphrase prompt (copied from https://github.com/99designs/aws-vault)
 func fileKeyringPassphrasePrompt(prompt string) (string, error) {
-	if password, ok := os.LookupEnv("CF_VAULT_FILE_PASSPHRASE"); ok {
+	if password, ok := os.LookupEnv(envFilePassphrase); ok {
 		return password, nil
 	}
 
@@ -61,17 +61,17 @@ func fileKeyringPassphrasePrompt(prompt string) (string, error) {
 func init() {
 	log.SetLevel(log.WarnLevel)
 
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "increase the verbosity of the output")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, flagVerbose, "v", false, "increase the verbosity of the output")
 
 	var profileTemplate string
 	var sessionDuration string
 	var secureEnclave bool
 	var yubikey bool
-	addCmd.Flags().StringVarP(&profileTemplate, "profile-template", "", "", "create profile with a predefined permissions and resources template")
-	addCmd.Flags().StringVarP(&sessionDuration, "session-duration", "", "", "TTL of short lived tokens requests")
-	addCmd.Flags().BoolVarP(&secureEnclave, "secure-enclave", "", false, "store the credential encrypted with age to a Secure Enclave key (requires `age` and `age-plugin-se`); unlocks via Touch ID instead of the keychain password")
-	addCmd.Flags().BoolVarP(&yubikey, "yubikey", "", false, "store the credential encrypted with age to a YubiKey PIV identity (requires `age` and `age-plugin-yubikey`); unlocks via a hardware touch instead of the keychain password")
-	addCmd.MarkFlagsMutuallyExclusive("secure-enclave", "yubikey")
+	addCmd.Flags().StringVarP(&profileTemplate, flagProfileTemplate, "", "", "create profile with a predefined permissions and resources template")
+	addCmd.Flags().StringVarP(&sessionDuration, flagSessionDuration, "", "", "TTL of short lived tokens requests")
+	addCmd.Flags().BoolVarP(&secureEnclave, flagSecureEnclave, "", false, "store the credential encrypted with age to a Secure Enclave key (requires `age` and `age-plugin-se`); unlocks via Touch ID instead of the keychain password")
+	addCmd.Flags().BoolVarP(&yubikey, flagYubikey, "", false, "store the credential encrypted with age to a YubiKey PIV identity (requires `age` and `age-plugin-yubikey`); unlocks via a hardware touch instead of the keychain password")
+	addCmd.MarkFlagsMutuallyExclusive(flagSecureEnclave, flagYubikey)
 
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)

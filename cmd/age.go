@@ -29,9 +29,9 @@ const (
 func ageIdentityPath(configDir, backend string) string {
 	switch backend {
 	case secretBackendAgeSE:
-		return filepath.Join(configDir, "identity-se.txt")
+		return filepath.Join(configDir, ageIdentitySEFileName)
 	case secretBackendAgeYubikey:
-		return filepath.Join(configDir, "identity-yubikey.txt")
+		return filepath.Join(configDir, ageIdentityYubikeyFileName)
 	}
 	return ""
 }
@@ -39,7 +39,7 @@ func ageIdentityPath(configDir, backend string) string {
 // ageSecretPath returns the ciphertext location for a profile. Filenames are
 // backend-agnostic; profile.SecretBackend tells us which identity to decrypt with.
 func ageSecretPath(configDir, profileName string) string {
-	return filepath.Join(configDir, "secrets", profileName+".age")
+	return filepath.Join(configDir, secretsDirName, profileName+ageSecretFileExt)
 }
 
 // ensureAgeIdentity returns the recipient (public key) for the given backend's
@@ -51,7 +51,7 @@ func ensureAgeIdentity(configDir, backend string) (string, error) {
 	case secretBackendAgeYubikey:
 		return ensureYubikeyIdentity(configDir)
 	}
-	return "", fmt.Errorf("unknown age backend %q", backend)
+	return "", fmt.Errorf(errFmtUnknownAgeBackend, backend)
 }
 
 // ensureSEIdentity generates a Secure Enclave age identity on first use — no
@@ -59,16 +59,16 @@ func ensureAgeIdentity(configDir, backend string) (string, error) {
 func ensureSEIdentity(configDir string) (string, error) {
 	idPath := ageIdentityPath(configDir, secretBackendAgeSE)
 	if _, err := os.Stat(idPath); os.IsNotExist(err) {
-		if _, err := exec.LookPath("age-plugin-se"); err != nil {
-			return "", fmt.Errorf("age-plugin-se not found on PATH; install it (`brew install age-plugin-se`) or place an existing identity file at %s", idPath)
+		if _, err := exec.LookPath(binAgePluginSE); err != nil {
+			return "", fmt.Errorf(errFmtAgePluginSENotFound, idPath)
 		}
 		if err := os.MkdirAll(filepath.Dir(idPath), 0o700); err != nil {
 			return "", err
 		}
-		cmd := exec.Command("age-plugin-se", "keygen", "-o", idPath)
+		cmd := exec.Command(binAgePluginSE, "keygen", "-o", idPath)
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("age-plugin-se keygen failed: %w", err)
+			return "", fmt.Errorf(errFmtAgePluginSEKeygen, err)
 		}
 		_ = os.Chmod(idPath, 0o600)
 	}
@@ -86,23 +86,23 @@ func ensureYubikeyIdentity(configDir string) (string, error) {
 		return readAgeRecipient(idPath)
 	}
 
-	if _, err := exec.LookPath("age-plugin-yubikey"); err != nil {
-		return "", fmt.Errorf("age-plugin-yubikey not found on PATH; install it (`brew install age-plugin-yubikey`) and either run `age-plugin-yubikey --generate` to enroll a new key, or place an existing identity file at %s", idPath)
+	if _, err := exec.LookPath(binAgePluginYubikey); err != nil {
+		return "", fmt.Errorf(errFmtAgePluginYubikeyNotFound, idPath)
 	}
 
-	cmd := exec.Command("age-plugin-yubikey", "--identity")
+	cmd := exec.Command(binAgePluginYubikey, "--identity")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("`age-plugin-yubikey --identity` failed (is a YubiKey plugged in?); if this is a fresh key, run `age-plugin-yubikey --generate` first: %w\n%s", err, stderr.String())
+		return "", fmt.Errorf(errFmtYubikeyIdentityCommand, err, stderr.String())
 	}
 
-	if strings.Count(stdout.String(), "AGE-PLUGIN-YUBIKEY-") > 1 {
-		return "", fmt.Errorf("multiple YubiKey identities detected — pick one and save its identity block to %s", idPath)
+	if strings.Count(stdout.String(), yubikeyIdentityMarker) > 1 {
+		return "", fmt.Errorf(errFmtMultipleYubikeyIdentity, idPath)
 	}
-	if !strings.Contains(stdout.String(), "AGE-PLUGIN-YUBIKEY-") {
-		return "", fmt.Errorf("no YubiKey identity found; run `age-plugin-yubikey --generate` to enroll one, then re-run this command")
+	if !strings.Contains(stdout.String(), yubikeyIdentityMarker) {
+		return "", errYubikeyIdentityNotFound
 	}
 
 	// age-plugin-yubikey emits the recipient on stderr and in padded stdout
@@ -110,7 +110,7 @@ func ensureYubikeyIdentity(configDir string) (string, error) {
 	// canonical `# recipient:` header so subsequent reads round-trip cleanly.
 	recipient := yubikeyRecipientRE.FindString(stderr.String() + "\n" + stdout.String())
 	if recipient == "" {
-		return "", fmt.Errorf("could not extract age1yubikey1… recipient from `age-plugin-yubikey --identity` output")
+		return "", errYubikeyRecipientNotFound
 	}
 
 	if err := os.MkdirAll(filepath.Dir(idPath), 0o700); err != nil {
@@ -118,7 +118,7 @@ func ensureYubikeyIdentity(configDir string) (string, error) {
 	}
 	body := fmt.Sprintf("# recipient: %s\n%s", recipient, stdout.String())
 	if err := os.WriteFile(idPath, []byte(body), 0o600); err != nil {
-		return "", fmt.Errorf("failed to cache YubiKey identity at %s: %w", idPath, err)
+		return "", fmt.Errorf(errFmtCacheYubikeyIdentity, idPath, err)
 	}
 	return recipient, nil
 }
@@ -146,7 +146,7 @@ func readAgeRecipient(idPath string) (string, error) {
 			if strings.HasPrefix(lowered, prefix) {
 				rec := strings.TrimSpace(body[len(prefix):])
 				if rec == "" {
-					return "", fmt.Errorf("empty recipient on `# %s` line in %s", prefix, idPath)
+					return "", fmt.Errorf(errFmtEmptyAgeRecipient, prefix, idPath)
 				}
 				return rec, nil
 			}
@@ -155,22 +155,22 @@ func readAgeRecipient(idPath string) (string, error) {
 	if err := scanner.Err(); err != nil {
 		return "", err
 	}
-	return "", fmt.Errorf("no `# public key:` or `# recipient:` line found in %s", idPath)
+	return "", fmt.Errorf(errFmtAgeRecipientNotFound, idPath)
 }
 
 // encryptWithAge writes an age-encrypted copy of plaintext to outPath.
 func encryptWithAge(recipient, outPath string, plaintext []byte) error {
-	if _, err := exec.LookPath("age"); err != nil {
-		return fmt.Errorf("age not found on PATH; install it (`brew install age`)")
+	if _, err := exec.LookPath(binAge); err != nil {
+		return errAgeNotFound
 	}
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o700); err != nil {
 		return err
 	}
-	cmd := exec.Command("age", "-r", recipient, "-o", outPath)
+	cmd := exec.Command(binAge, "-r", recipient, "-o", outPath)
 	cmd.Stdin = bytes.NewReader(plaintext)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("age encryption failed: %w", err)
+		return fmt.Errorf(errFmtAgeEncrypt, err)
 	}
 	return os.Chmod(outPath, 0o600)
 }
@@ -179,18 +179,18 @@ func encryptWithAge(recipient, outPath string, plaintext []byte) error {
 // shells out to the appropriate plugin (SE or YubiKey), which surfaces the
 // Touch ID or hardware-touch prompt.
 func decryptWithAge(identityPath, inPath string) ([]byte, error) {
-	if _, err := exec.LookPath("age"); err != nil {
-		return nil, fmt.Errorf("age not found on PATH; install it (`brew install age`)")
+	if _, err := exec.LookPath(binAge); err != nil {
+		return nil, errAgeNotFound
 	}
 	if _, err := os.Stat(inPath); err != nil {
-		return nil, fmt.Errorf("secret ciphertext missing at %s: %w", inPath, err)
+		return nil, fmt.Errorf(errFmtAgeCiphertextMissing, inPath, err)
 	}
-	cmd := exec.Command("age", "-d", "-i", identityPath, inPath)
+	cmd := exec.Command(binAge, "-d", "-i", identityPath, inPath)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("age decryption failed: %w", err)
+		return nil, fmt.Errorf(errFmtAgeDecrypt, err)
 	}
 	return out.Bytes(), nil
 }
