@@ -116,6 +116,15 @@ CF_EMAIL=jacob@example.com
 CF_API_KEY=s3cr3t
 ```
 
+To reference the credentials in the command's arguments, wrap the command in a
+shell using single quotes. Without them, your current shell expands the
+variables before `cf-vault` has populated them and the command receives empty
+(or stale) values.
+
+```shell
+$ cf-vault exec work -- sh -c 'curl -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify'
+```
+
 If you don't provide a command, you will be dropped into a new shell with the
 credentials populated.
 

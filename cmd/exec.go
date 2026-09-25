@@ -21,6 +21,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// credentialEnvVars are every variable `exec` may populate. Any of them already
+// being set in the calling shell is a footgun: arguments like
+// `-- echo $CLOUDFLARE_API_TOKEN` are expanded by that shell before cf-vault
+// runs, so they silently carry the stale value instead of the profile's.
+var credentialEnvVars = []string{
+	envCloudflareEmail,
+	envCFEmail,
+	envPrefixCloudflare + strings.ToUpper(authTypeAPIKey),
+	envPrefixCF + strings.ToUpper(authTypeAPIKey),
+	envCloudflareAPIToken,
+	envCFAPIToken,
+	envCloudflareSessionExpiry,
+}
+
 var execCmd = &cobra.Command{
 	Use:   "exec [profile]",
 	Short: "Execute a command with Cloudflare credentials populated",
@@ -34,6 +48,12 @@ var execCmd = &cobra.Command{
     CLOUDFLARE_API_KEY=s3cr3t
     CF_EMAIL=jacob@example.com
     CF_API_KEY=s3cr3t
+
+  Reference the credentials in the command's arguments. The command must be
+  wrapped in a shell with single quotes, otherwise your current shell expands
+  the variables before cf-vault has populated them.
+
+    $ cf-vault exec example-profile -- sh -c 'curl -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify'
 
   Spawn a new shell with credentials populated
 
@@ -72,6 +92,16 @@ var execCmd = &cobra.Command{
 		// Don't allow nesting of cf-vault sessions, it gets messy.
 		if os.Getenv(envVaultSession) != "" {
 			log.Fatal(errNestedSession)
+		}
+
+		var preexisting []string
+		for _, name := range credentialEnvVars {
+			if _, ok := os.LookupEnv(name); ok {
+				preexisting = append(preexisting, name)
+			}
+		}
+		if len(preexisting) > 0 {
+			log.Warnf(msgFmtPreexistingCredentials, strings.Join(preexisting, ", "))
 		}
 
 		log.Debug("using profile: ", profileName)
