@@ -45,15 +45,15 @@ func TestValidateProfileName(t *testing.T) {
 	}
 
 	invalid := []string{
-		"",              // empty
-		".hidden",       // leading dot
-		"..",            // parent directory
-		"../evil",       // traversal
-		"foo/bar",       // path separator
-		`foo\bar`,       // windows separator
-		"foo bar",       // whitespace
-		"foo\x00bar",    // control character
-		"a$b",           // shell metacharacter
+		"",           // empty
+		".hidden",    // leading dot
+		"..",         // parent directory
+		"../evil",    // traversal
+		"foo/bar",    // path separator
+		`foo\bar`,    // windows separator
+		"foo bar",    // whitespace
+		"foo\x00bar", // control character
+		"a$b",        // shell metacharacter
 	}
 	for _, name := range invalid {
 		if err := validateProfileName(name); err == nil {
