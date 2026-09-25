@@ -65,4 +65,7 @@ const (
 	msgFmtNoProfilesFound     = "no profiles found at %s\n"
 	msgFmtLegacyConfigWarning = "Warning: XDG directories are configured but legacy data exists at %s. " +
 		"Consider migrating your config and keys to the new XDG-compliant locations.\n"
+	msgFmtPreexistingCredentials = "%s already set in the calling shell. Any of these referenced in " +
+		"the command's arguments were expanded by that shell before cf-vault ran and carry the stale " +
+		"values. Unset them, or wrap the command in `sh -c '...'` so the profile's values are used."
 )

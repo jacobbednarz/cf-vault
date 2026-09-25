@@ -45,14 +45,21 @@ type cfVaultResult struct {
 
 // runCfVault runs the cf-vault binary with the given args and extra env vars.
 // Extra env inherits the current process env and appends/overrides with extras.
+// Credentials exported in the developer's shell or CI are stripped first so
+// they can't leak into `exec` assertions or trigger its preexisting warning.
 func runCfVault(t *testing.T, extraEnv []string, args ...string) cfVaultResult {
 	t.Helper()
 	if binaryPath == "" {
 		t.Skip("cf-vault binary not built, skipping integration test")
 	}
 
+	env := environ(os.Environ())
+	for _, name := range credentialEnvVars {
+		env.Unset(name)
+	}
+
 	cmd := exec.Command(binaryPath, args...)
-	cmd.Env = append(os.Environ(), extraEnv...)
+	cmd.Env = append(env, extraEnv...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -400,5 +407,59 @@ func TestIntegration_Exec_APIToken(t *testing.T) {
 	}
 	if !strings.Contains(result.Stdout, "CLOUDFLARE_VAULT_SESSION=tokenprofile") {
 		t.Errorf("expected CLOUDFLARE_VAULT_SESSION=tokenprofile in output, got:\n%s", result.Stdout)
+	}
+}
+
+func TestIntegration_Exec_WarnsOnPreexistingCredentials(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	filtered := make([]string, 0, len(envVars))
+	for _, e := range envVars {
+		if !strings.HasPrefix(e, "CLOUDFLARE_VAULT_SESSION=") {
+			filtered = append(filtered, e)
+		}
+	}
+	envVars = append(filtered, "CLOUDFLARE_API_TOKEN=stale", "CF_API_KEY=stale")
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.tokenprofile]
+    auth_type = "api_token"
+`)
+	writeKeyringItem(t, keyringDir, "tokenprofile-api_token", []byte("abcdefghijklmnopqrstuvwxyzABCDEF12345678"))
+
+	result := runCfVault(t, envVars, "exec", "tokenprofile", "--", "env")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !strings.Contains(result.Stderr, "CLOUDFLARE_API_TOKEN") || !strings.Contains(result.Stderr, "CF_API_KEY") {
+		t.Errorf("expected warning naming both preexisting variables, got: %q", result.Stderr)
+	}
+	// The profile's value must still win in the child's environment.
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN=abcdefghijklmnopqrstuvwxyzABCDEF12345678") {
+		t.Errorf("expected profile CLOUDFLARE_API_TOKEN to override stale value, got:\n%s", result.Stdout)
+	}
+}
+
+func TestIntegration_Exec_NoWarningWithoutPreexistingCredentials(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.tokenprofile]
+    auth_type = "api_token"
+`)
+	writeKeyringItem(t, keyringDir, "tokenprofile-api_token", []byte("abcdefghijklmnopqrstuvwxyzABCDEF12345678"))
+
+	result := runCfVault(t, envVars, "exec", "tokenprofile", "--", "env")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if strings.Contains(result.Stderr, "already set in the calling shell") {
+		t.Errorf("expected no warning, got: %q", result.Stderr)
 	}
 }
