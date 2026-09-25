@@ -29,6 +29,7 @@ type profile struct {
 	Email           string   `toml:"email"`
 	AuthType        string   `toml:"auth_type"`
 	SessionDuration string   `toml:"session_duration,omitempty"`
+	SecretBackend   string   `toml:"secret_backend,omitempty"`
 	Policies        []policy `toml:"policies,omitempty"`
 }
 
@@ -67,8 +68,21 @@ var addCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		profileName := strings.TrimSpace(args[0])
+		if err := validateProfileName(profileName); err != nil {
+			log.Fatal(err)
+		}
 		sessionDuration, _ := cmd.Flags().GetString("session-duration")
 		profileTemplate, _ := cmd.Flags().GetString("profile-template")
+		useSecureEnclave, _ := cmd.Flags().GetBool("secure-enclave")
+		useYubikey, _ := cmd.Flags().GetBool("yubikey")
+
+		var secretBackend string
+		switch {
+		case useSecureEnclave:
+			secretBackend = secretBackendAgeSE
+		case useYubikey:
+			secretBackend = secretBackendAgeYubikey
+		}
 
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Email address: ")
@@ -127,6 +141,10 @@ var addCmd = &cobra.Command{
 			log.Debug("session-duration was not set, not using short lived tokens")
 		}
 
+		if secretBackend != "" {
+			newProfile.SecretBackend = secretBackend
+		}
+
 		var cfClient *cloudflare.Client
 		if profileTemplate != "" {
 			cfClient = newClient(authValue, authType, emailAddress)
@@ -152,8 +170,39 @@ var addCmd = &cobra.Command{
 		}
 
 		log.Debugf("new profile: %+v", newProfile)
-		tomlConfigStruct.Profiles[profileName] = newProfile
 
+		// Persist the credential first — if storage fails we don't want an
+		// orphaned profile entry in config.toml pointing at nothing.
+		var successMessage string
+		switch secretBackend {
+		case secretBackendAgeSE, secretBackendAgeYubikey:
+			recipient, err := ensureAgeIdentity(configDir, secretBackend)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err := encryptWithAge(recipient, ageSecretPath(configDir, profileName), []byte(authValue)); err != nil {
+				log.Fatal(err)
+			}
+			if secretBackend == secretBackendAgeSE {
+				successMessage = "\nSuccess! Credentials encrypted to the Secure Enclave and are now ready for use!"
+			} else {
+				successMessage = "\nSuccess! Credentials encrypted to a YubiKey identity and are now ready for use!"
+			}
+		default:
+			ring, err := openKeyring()
+			if err != nil {
+				log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
+			}
+			if err := ring.Set(keyring.Item{
+				Key:  fmt.Sprintf("%s-%s", profileName, authType),
+				Data: []byte(authValue),
+			}); err != nil {
+				log.Fatal("Error adding credentials to keyring: ", err)
+			}
+			successMessage = "\nSuccess! Credentials have been set and are now ready for use!"
+		}
+
+		tomlConfigStruct.Profiles[profileName] = newProfile
 		configFile, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
 		if err != nil {
 			log.Fatal("failed to open file at ", configPath)
@@ -163,23 +212,25 @@ var addCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		ring, err := openKeyring()
-		if err != nil {
-			log.Fatalf("failed to open keyring backend: %s", strings.ToLower(err.Error()))
-		}
-
-		resp := ring.Set(keyring.Item{
-			Key:  fmt.Sprintf("%s-%s", profileName, authType),
-			Data: []byte(authValue),
-		})
-
-		if resp == nil {
-			fmt.Println("\nSuccess! Credentials have been set and are now ready for use!")
-		} else {
-			// error of some sort
-			log.Fatal("Error adding credentials to keyring: ", resp)
-		}
+		fmt.Println(successMessage)
 	},
+}
+
+// profileNameRE restricts profile names to a filesystem-safe subset. Profile
+// names flow into filesystem paths (secrets/<name>.age, keyring keys) and
+// TOML section names, so `..`, path separators, and leading dots must be
+// rejected to prevent a crafted name from escaping the config directory or
+// creating hidden files.
+var profileNameRE = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]*$`)
+
+func validateProfileName(name string) error {
+	if name == "" {
+		return errors.New("profile name must not be empty")
+	}
+	if !profileNameRE.MatchString(name) {
+		return fmt.Errorf("profile name %q is invalid; use only letters, digits, `.`, `_`, `-`, and do not start with `.`", name)
+	}
+	return nil
 }
 
 func determineAuthType(s string) (string, error) {
@@ -221,7 +272,13 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 		zoneGroups = filterReadGroups(zoneGroups)
 		userGroups = filterReadGroups(userGroups)
 	case "write-everything":
-		// use all groups as-is
+		// Cloudflare refuses POST /user/tokens when the new token would carry
+		// token-management permissions of its own ("sub-token is not allowed to
+		// have permissions to manage other tokens", code 1001). The rule applies
+		// regardless of scope, so filter both the User bucket ("API Tokens
+		// Read/Write") and the Account bucket ("Account API Tokens Read/Write").
+		accountGroups = filterAPITokensGroups(accountGroups)
+		userGroups = filterAPITokensGroups(userGroups)
 	default:
 		return nil, fmt.Errorf("unable to generate policy for %q, valid policy names: [read-only, write-everything]", policyType)
 	}
@@ -255,6 +312,17 @@ func filterReadGroups(groups []permissionGroup) []permissionGroup {
 		if strings.Contains(g.Name, "Read") {
 			out = append(out, g)
 		}
+	}
+	return out
+}
+
+func filterAPITokensGroups(groups []permissionGroup) []permissionGroup {
+	var out []permissionGroup
+	for _, g := range groups {
+		if strings.Contains(g.Name, "API Tokens") {
+			continue
+		}
+		out = append(out, g)
 	}
 	return out
 }

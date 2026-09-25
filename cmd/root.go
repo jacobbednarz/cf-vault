@@ -65,8 +65,13 @@ func init() {
 
 	var profileTemplate string
 	var sessionDuration string
+	var secureEnclave bool
+	var yubikey bool
 	addCmd.Flags().StringVarP(&profileTemplate, "profile-template", "", "", "create profile with a predefined permissions and resources template")
 	addCmd.Flags().StringVarP(&sessionDuration, "session-duration", "", "", "TTL of short lived tokens requests")
+	addCmd.Flags().BoolVarP(&secureEnclave, "secure-enclave", "", false, "store the credential encrypted with age to a Secure Enclave key (requires `age` and `age-plugin-se`); unlocks via Touch ID instead of the keychain password")
+	addCmd.Flags().BoolVarP(&yubikey, "yubikey", "", false, "store the credential encrypted with age to a YubiKey PIV identity (requires `age` and `age-plugin-yubikey`); unlocks via a hardware touch instead of the keychain password")
+	addCmd.MarkFlagsMutuallyExclusive("secure-enclave", "yubikey")
 
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)

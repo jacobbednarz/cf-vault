@@ -133,6 +133,38 @@ $ env | grep -i cloudflare
 # => no results
 ```
 
+## Hardware-backed credentials
+
+Instead of protecting stored credentials with your macOS login password, you
+can encrypt them to a hardware key — Touch ID via the Secure Enclave, or a
+YubiKey. Unlocking then requires a fingerprint or a physical touch instead of
+a password.
+
+This is opt-in per profile via a flag on `add`. Existing profiles are
+unaffected.
+
+### Touch ID (Secure Enclave, macOS only)
+
+```
+brew install age age-plugin-se
+cf-vault add my-profile --secure-enclave
+```
+
+A Secure Enclave key is generated on first use. The key never leaves this
+Mac — losing the machine means losing access to any credential encrypted
+with it.
+
+### YubiKey
+
+```
+brew install age age-plugin-yubikey
+age-plugin-yubikey --generate    # one-time key enrollment
+cf-vault add my-profile --yubikey
+```
+
+cf-vault uses whichever identity is currently enrolled on the plugged-in
+YubiKey. The key must be plugged in for `cf-vault exec` to succeed.
+
 ## Predefined short lived token policies
 
 If you don't need to generate a custom token policy, you can instead use one of
