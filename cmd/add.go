@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -57,6 +58,14 @@ var addCmd = &cobra.Command{
   Add a read-only short lived token profile restricted to a single account
 
     $ cf-vault add example-profile --profile-template read-only --session-duration 15m --account-id 01a7362d577a6c3019a474fd6f485823
+
+  Add a profile without prompting, reading an API token from stdin
+
+    $ printf '%s' "$TOKEN" | cf-vault add example-profile --authentication-value-stdin
+
+  Add a profile without prompting, reading a global API key from the environment
+
+    $ CF_VAULT_AUTH_VALUE="$API_KEY" cf-vault add example-profile --email jacob@example.com
 `,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -81,6 +90,8 @@ var addCmd = &cobra.Command{
 		zoneIDs, _ := cmd.Flags().GetStringSlice(flagZoneID)
 		useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
 		useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
+		emailAddress, _ := cmd.Flags().GetString(flagEmail)
+		authValueFromStdin, _ := cmd.Flags().GetBool(flagAuthValueStdin)
 
 		if err := validatePolicyTemplate(profileTemplate); err != nil {
 			log.Fatal(err)
@@ -104,22 +115,20 @@ var addCmd = &cobra.Command{
 			secretBackend = secretBackendAgeYubikey
 		}
 
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print(promptEmailAddress)
-		emailAddress, _ := reader.ReadString('\n')
-		emailAddress = strings.TrimSpace(emailAddress)
-
-		fmt.Print(promptAuthValue)
-		byteAuthValue, err := term.ReadPassword(int(os.Stdin.Fd()))
+		emailAddress, authValue, err := readCredentials(emailAddress, authValueFromStdin)
 		if err != nil {
 			log.Fatalf(errFmtReadAuthValue, err)
 		}
-		authValue := string(byteAuthValue)
-		fmt.Println()
 
-		authType, err := determineAuthType(strings.TrimSpace(authValue))
+		authType, err := determineAuthType(authValue)
 		if err != nil {
 			log.Fatalf(errFmtDetectAuthType, err)
+		}
+
+		// Global API keys authenticate with the email alongside the key; API
+		// tokens carry the identity themselves.
+		if authType == authTypeAPIKey && emailAddress == "" {
+			log.Fatal(errEmailRequiredForAPIKey)
 		}
 
 		configDir, err := resolveConfigDir()
@@ -289,6 +298,48 @@ func validatePolicyTemplate(name string) error {
 		return nil
 	}
 	return fmt.Errorf(errFmtUnknownPolicyTemplate, name)
+}
+
+// readCredentials resolves the email address and authentication value for a
+// new profile. The authentication value comes from the first available of:
+//
+//  1. stdin, when `--authentication-value-stdin` is set
+//  2. the CF_VAULT_AUTH_VALUE environment variable
+//  3. an interactive prompt, along with the email if `--email` wasn't passed
+//
+// The non-interactive sources never prompt: without a terminal there is nobody
+// to answer, and a prompt reading from piped stdin would consume the secret.
+func readCredentials(emailAddress string, fromStdin bool) (string, string, error) {
+	if fromStdin {
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", "", err
+		}
+		return emailAddress, strings.TrimSpace(string(b)), nil
+	}
+
+	if authValue, ok := os.LookupEnv(envAuthValue); ok {
+		return emailAddress, strings.TrimSpace(authValue), nil
+	}
+
+	stdinFd := int(os.Stdin.Fd())
+	if !term.IsTerminal(stdinFd) {
+		return "", "", errAuthValueSourceRequired
+	}
+
+	if emailAddress == "" {
+		fmt.Print(promptEmailAddress)
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		emailAddress = strings.TrimSpace(line)
+	}
+
+	fmt.Print(promptAuthValue)
+	b, err := term.ReadPassword(stdinFd)
+	fmt.Println()
+	if err != nil {
+		return "", "", err
+	}
+	return emailAddress, strings.TrimSpace(string(b)), nil
 }
 
 // generatePolicy builds the policies for a predefined template. Optional

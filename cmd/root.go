@@ -69,6 +69,8 @@ func init() {
 	var yubikey bool
 	var accountIDs []string
 	var zoneIDs []string
+	var emailAddress string
+	var authValueFromStdin bool
 	addCmd.Flags().StringVarP(&profileTemplate, flagProfileTemplate, "", "", "create profile with a predefined permissions and resources template ("+policyTemplateReadOnly+", "+policyTemplateWriteEverything+")")
 	addCmd.RegisterFlagCompletionFunc(flagProfileTemplate, cobra.FixedCompletions(policyTemplates, cobra.ShellCompDirectiveNoFileComp))
 	addCmd.Flags().StringSliceVarP(&accountIDs, flagAccountID, "", nil, "restrict the --profile-template policies to these account IDs (repeatable)")
@@ -77,6 +79,8 @@ func init() {
 	addCmd.Flags().BoolVarP(&secureEnclave, flagSecureEnclave, "", false, "store the credential encrypted with age to a Secure Enclave key (requires `age` and `age-plugin-se`); unlocks via Touch ID instead of the keychain password")
 	addCmd.Flags().BoolVarP(&yubikey, flagYubikey, "", false, "store the credential encrypted with age to a YubiKey PIV identity (requires `age` and `age-plugin-yubikey`); unlocks via a hardware touch instead of the keychain password")
 	addCmd.MarkFlagsMutuallyExclusive(flagSecureEnclave, flagYubikey)
+	addCmd.Flags().StringVarP(&emailAddress, flagEmail, "", "", "email address of the account; required for global API keys")
+	addCmd.Flags().BoolVarP(&authValueFromStdin, flagAuthValueStdin, "", false, "read the authentication value (API key or API token) from stdin instead of prompting; alternatively set "+envAuthValue)
 
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)

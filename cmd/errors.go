@@ -12,6 +12,8 @@ var (
 	errYubikeyIdentityNotFound  = errors.New("no YubiKey identity found; run `age-plugin-yubikey --generate` to enroll one, then re-run this command")
 	errYubikeyRecipientNotFound = errors.New("could not extract age1yubikey1… recipient from `age-plugin-yubikey --identity` output")
 	errResourceIDsNeedTemplate  = errors.New("--" + flagAccountID + " and --" + flagZoneID + " can only be used with --" + flagProfileTemplate)
+	errEmailRequiredForAPIKey   = errors.New("--" + flagEmail + " is required when adding a global API key")
+	errAuthValueSourceRequired  = errors.New("stdin is not a terminal; pass --" + flagAuthValueStdin + " or set " + envAuthValue + " to provide the authentication value")
 )
 
 // Error message strings. Most are format strings that interpolate context or

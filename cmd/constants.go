@@ -14,6 +14,7 @@ const (
 	// Environment variables read by cf-vault.
 	envVaultSession   = "CLOUDFLARE_VAULT_SESSION"
 	envFilePassphrase = "CF_VAULT_FILE_PASSPHRASE"
+	envAuthValue      = "CF_VAULT_AUTH_VALUE"
 	envKeyringBackend = "CF_VAULT_BACKEND"
 	envXDGConfigHome  = "XDG_CONFIG_HOME"
 	envXDGDataHome    = "XDG_DATA_HOME"
@@ -54,6 +55,8 @@ const (
 	flagSessionDuration = "session-duration"
 	flagSecureEnclave   = "secure-enclave"
 	flagYubikey         = "yubikey"
+	flagEmail           = "email"
+	flagAuthValueStdin  = "authentication-value-stdin"
 
 	// External binaries cf-vault shells out to for age-based secret backends.
 	binAge              = "age"

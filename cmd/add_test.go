@@ -3,14 +3,18 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	cloudflare "github.com/cloudflare/cloudflare-go/v6"
 	"github.com/cloudflare/cloudflare-go/v6/option"
+	"github.com/pelletier/go-toml"
 )
 
 func TestDetermineAuthType_APIToken(t *testing.T) {
@@ -430,6 +434,171 @@ func TestIntegration_Add_InvalidZoneID(t *testing.T) {
 	}
 	if combined := result.Stdout + result.Stderr; !strings.Contains(combined, "zone ID") || !strings.Contains(combined, "is invalid") {
 		t.Errorf("expected invalid zone ID error, got stdout=%q stderr=%q", result.Stdout, result.Stderr)
+	}
+}
+
+const (
+	testAPIToken = "abcdefghijklmnopqrstuvwxyzABCDEF12345678"
+	testAPIKey   = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f67"
+)
+
+// readTestConfig decodes the config.toml written by `add`.
+func readTestConfig(t *testing.T, configDir string) tomlConfig {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(configDir, configFileName))
+	if err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+	var cfg tomlConfig
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("decoding config: %v", err)
+	}
+	return cfg
+}
+
+// credentialSource describes how a test hands the authentication value to
+// `add` without a terminal.
+type credentialSource struct {
+	name  string
+	stdin func(secret string) io.Reader
+	env   func(secret string) []string
+	flags []string
+}
+
+var nonInteractiveSources = []credentialSource{
+	{
+		name:  "stdin",
+		stdin: func(secret string) io.Reader { return strings.NewReader(secret + "\n") },
+		env:   func(string) []string { return nil },
+		flags: []string{"--" + flagAuthValueStdin},
+	},
+	{
+		name:  "env",
+		stdin: func(string) io.Reader { return nil },
+		env:   func(secret string) []string { return []string{envAuthValue + "=" + secret} },
+	},
+}
+
+func TestIntegration_Add_NonInteractive(t *testing.T) {
+	tests := []struct {
+		name         string
+		secret       string
+		email        string
+		wantAuthType string
+	}{
+		{name: "api token without email", secret: testAPIToken, wantAuthType: authTypeAPIToken},
+		{name: "api key with email", secret: testAPIKey, email: "user@example.com", wantAuthType: authTypeAPIKey},
+	}
+
+	for _, src := range nonInteractiveSources {
+		for _, tt := range tests {
+			t.Run(src.name+"/"+tt.name, func(t *testing.T) {
+				configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+				defer cleanup()
+
+				args := append([]string{"add", "example"}, src.flags...)
+				if tt.email != "" {
+					args = append(args, "--"+flagEmail, tt.email)
+				}
+				result := runCfVaultWithStdin(t, append(envVars, src.env(tt.secret)...), src.stdin(tt.secret), args...)
+
+				if result.ExitCode != 0 {
+					t.Fatalf("expected exit 0, got %d\nstdout: %s\nstderr: %s", result.ExitCode, result.Stdout, result.Stderr)
+				}
+				for _, prompt := range []string{promptEmailAddress, promptAuthValue} {
+					if strings.Contains(result.Stdout, prompt) {
+						t.Errorf("expected no prompt %q, got stdout=%q", prompt, result.Stdout)
+					}
+				}
+
+				got, ok := readTestConfig(t, configDir).Profiles["example"]
+				if !ok {
+					t.Fatal("expected profile to be written to config")
+				}
+				if got.AuthType != tt.wantAuthType || got.Email != tt.email {
+					t.Errorf("got auth_type=%q email=%q, want auth_type=%q email=%q", got.AuthType, got.Email, tt.wantAuthType, tt.email)
+				}
+
+				// The trailing newline from stdin must not end up in the stored secret.
+				stored, ok := readKeyringItem(t, keyringDir, "example-"+tt.wantAuthType)
+				if !ok {
+					t.Fatal("expected credential to be stored in the keyring")
+				}
+				if string(stored) != tt.secret {
+					t.Errorf("stored secret = %q, want %q", stored, tt.secret)
+				}
+			})
+		}
+	}
+}
+
+func TestIntegration_Add_APIKeyRequiresEmail(t *testing.T) {
+	for _, src := range nonInteractiveSources {
+		t.Run(src.name, func(t *testing.T) {
+			configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			args := append([]string{"add", "example"}, src.flags...)
+			result := runCfVaultWithStdin(t, append(envVars, src.env(testAPIKey)...), src.stdin(testAPIKey), args...)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			if !strings.Contains(result.Stderr, errEmailRequiredForAPIKey.Error()) {
+				t.Errorf("expected email requirement error, got stderr=%q", result.Stderr)
+			}
+			if strings.Contains(result.Stdout, promptEmailAddress) {
+				t.Errorf("expected no email prompt, got stdout=%q", result.Stdout)
+			}
+			if _, err := os.Stat(filepath.Join(configDir, configFileName)); !os.IsNotExist(err) {
+				t.Errorf("expected no config to be written, stat err = %v", err)
+			}
+			if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIKey); ok {
+				t.Error("expected no credential to be stored in the keyring")
+			}
+		})
+	}
+}
+
+func TestIntegration_Add_StdinTakesPrecedenceOverEnv(t *testing.T) {
+	_, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	const envToken = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvu87654321"
+	result := runCfVaultWithStdin(t,
+		append(envVars, envAuthValue+"="+envToken),
+		strings.NewReader(testAPIToken),
+		"add", "example", "--"+flagAuthValueStdin,
+	)
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	stored, _ := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken)
+	if string(stored) != testAPIToken {
+		t.Errorf("stored secret = %q, want the stdin value %q", stored, testAPIToken)
+	}
+}
+
+func TestIntegration_Add_NoAuthValueSourceWithoutTerminal(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Test stdin is the null device, so an unguarded prompt would read EOF
+	// rather than hang; asserting the explicit error proves the guard fired.
+	result := runCfVault(t, envVars, "add", "example")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stderr, errAuthValueSourceRequired.Error()) {
+		t.Errorf("expected missing auth value source error, got stderr=%q", result.Stderr)
+	}
+	if strings.Contains(result.Stdout, promptEmailAddress) || strings.Contains(result.Stdout, promptAuthValue) {
+		t.Errorf("expected no prompts, got stdout=%q", result.Stdout)
+	}
+	if _, err := os.Stat(filepath.Join(configDir, configFileName)); !os.IsNotExist(err) {
+		t.Errorf("expected no config to be written, stat err = %v", err)
 	}
 }
 
