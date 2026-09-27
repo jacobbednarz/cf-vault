@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go/v6"
@@ -80,6 +81,10 @@ var addCmd = &cobra.Command{
 		zoneIDs, _ := cmd.Flags().GetStringSlice(flagZoneID)
 		useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
 		useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
+
+		if err := validatePolicyTemplate(profileTemplate); err != nil {
+			log.Fatal(err)
+		}
 
 		if profileTemplate == "" && (len(accountIDs) > 0 || len(zoneIDs) > 0) {
 			log.Fatal(errResourceIDsNeedTemplate)
@@ -272,6 +277,18 @@ func determineAuthType(s string) (string, error) {
 	} else {
 		return "", errInvalidAuthValueFormat
 	}
+}
+
+// policyTemplates are the values accepted by `--profile-template`.
+var policyTemplates = []string{policyTemplateReadOnly, policyTemplateWriteEverything}
+
+// validatePolicyTemplate rejects unknown template names up front, before the
+// user is asked for credentials that would only be thrown away.
+func validatePolicyTemplate(name string) error {
+	if name == "" || slices.Contains(policyTemplates, name) {
+		return nil
+	}
+	return fmt.Errorf(errFmtUnknownPolicyTemplate, name)
 }
 
 // generatePolicy builds the policies for a predefined template. Optional

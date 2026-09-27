@@ -433,6 +433,22 @@ func TestIntegration_Add_InvalidZoneID(t *testing.T) {
 	}
 }
 
+func TestIntegration_Add_UnknownTemplateRejectedBeforeCredentials(t *testing.T) {
+	_, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// No credential source is given, so reaching the credential step would
+	// fail with a different error; the template error proves it ran first.
+	result := runCfVault(t, envVars, "add", "example", "--"+flagProfileTemplate, "read-everything")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stderr, "unable to generate policy for") || !strings.Contains(result.Stderr, "read-everything") {
+		t.Errorf("expected unknown template error, got stderr=%q", result.Stderr)
+	}
+}
+
 func TestGeneratePolicy_EmptyBucket(t *testing.T) {
 	// Only account and user groups — no zone groups — so read-only zone bucket is empty.
 	groups := []mockPermGroup{

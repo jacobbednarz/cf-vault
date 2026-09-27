@@ -69,7 +69,8 @@ func init() {
 	var yubikey bool
 	var accountIDs []string
 	var zoneIDs []string
-	addCmd.Flags().StringVarP(&profileTemplate, flagProfileTemplate, "", "", "create profile with a predefined permissions and resources template")
+	addCmd.Flags().StringVarP(&profileTemplate, flagProfileTemplate, "", "", "create profile with a predefined permissions and resources template ("+policyTemplateReadOnly+", "+policyTemplateWriteEverything+")")
+	addCmd.RegisterFlagCompletionFunc(flagProfileTemplate, cobra.FixedCompletions(policyTemplates, cobra.ShellCompDirectiveNoFileComp))
 	addCmd.Flags().StringSliceVarP(&accountIDs, flagAccountID, "", nil, "restrict the --profile-template policies to these account IDs (repeatable)")
 	addCmd.Flags().StringSliceVarP(&zoneIDs, flagZoneID, "", nil, "restrict the --profile-template policies to these zone IDs (repeatable)")
 	addCmd.Flags().StringVarP(&sessionDuration, flagSessionDuration, "", "", "TTL of short lived tokens requests")
