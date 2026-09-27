@@ -26,6 +26,8 @@ const (
 	// Profiles and configuration.
 	errFmtInvalidProfileName    = "profile name %q is invalid; use only letters, digits, `.`, `_`, `-`, and do not start with `.`"
 	errFmtProfileNotFound       = "no profile matching %q found in the configuration file at %s"
+	errFmtProfileExists         = "profile %q already exists in %s; pass --" + flagForce + " to overwrite it"
+	errFmtParseConfigFile       = "failed to parse the configuration file at %s: %s"
 	errFmtUnknownSecretBackend  = "profile %q has unknown secret_backend %q; valid values are %q, %q, or unset for keychain"
 	errFmtHomeDirNotFound       = "unable to find home directory: %w"
 	errFmtOpenConfigFile        = "failed to open file at %s"

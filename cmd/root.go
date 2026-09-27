@@ -71,6 +71,7 @@ func init() {
 	var zoneIDs []string
 	var emailAddress string
 	var authValueFromStdin bool
+	var force bool
 	addCmd.Flags().StringVarP(&profileTemplate, flagProfileTemplate, "", "", "create profile with a predefined permissions and resources template ("+policyTemplateReadOnly+", "+policyTemplateWriteEverything+")")
 	addCmd.RegisterFlagCompletionFunc(flagProfileTemplate, cobra.FixedCompletions(policyTemplates, cobra.ShellCompDirectiveNoFileComp))
 	addCmd.Flags().StringSliceVarP(&accountIDs, flagAccountID, "", nil, "restrict the --profile-template policies to these account IDs (repeatable)")
@@ -81,6 +82,7 @@ func init() {
 	addCmd.MarkFlagsMutuallyExclusive(flagSecureEnclave, flagYubikey)
 	addCmd.Flags().StringVarP(&emailAddress, flagEmail, "", "", "email address of the account; required for global API keys")
 	addCmd.Flags().BoolVarP(&authValueFromStdin, flagAuthValueStdin, "", false, "read the authentication value (API key or API token) from stdin instead of prompting; alternatively set "+envAuthValue)
+	addCmd.Flags().BoolVarP(&force, flagForce, "", false, "overwrite the profile if it already exists")
 
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)

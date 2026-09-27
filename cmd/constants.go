@@ -57,6 +57,7 @@ const (
 	flagYubikey         = "yubikey"
 	flagEmail           = "email"
 	flagAuthValueStdin  = "authentication-value-stdin"
+	flagForce           = "force"
 
 	// External binaries cf-vault shells out to for age-based secret backends.
 	binAge              = "age"

@@ -602,6 +602,72 @@ func TestIntegration_Add_NoAuthValueSourceWithoutTerminal(t *testing.T) {
 	}
 }
 
+func TestIntegration_Add_ExistingProfileRequiresForce(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.example]
+    email = "old@example.com"
+    auth_type = "api_key"
+`)
+
+	result := runCfVaultWithStdin(t, envVars, strings.NewReader(testAPIToken), "add", "example", "--"+flagAuthValueStdin)
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit without --force, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stderr, "already exists") || !strings.Contains(result.Stderr, "--"+flagForce) {
+		t.Errorf("expected existing profile error mentioning --force, got stderr=%q", result.Stderr)
+	}
+	if got := readTestConfig(t, configDir).Profiles["example"]; got.Email != "old@example.com" || got.AuthType != authTypeAPIKey {
+		t.Errorf("expected existing profile to be untouched, got %+v", got)
+	}
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); ok {
+		t.Error("expected no credential to be stored without --force")
+	}
+
+	result = runCfVaultWithStdin(t, envVars, strings.NewReader(testAPIToken), "add", "example", "--"+flagAuthValueStdin, "--"+flagForce)
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0 with --force, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if got := readTestConfig(t, configDir).Profiles["example"]; got.Email != "" || got.AuthType != authTypeAPIToken {
+		t.Errorf("expected profile to be replaced, got %+v", got)
+	}
+	if stored, _ := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); string(stored) != testAPIToken {
+		t.Errorf("stored secret = %q, want %q", stored, testAPIToken)
+	}
+}
+
+func TestIntegration_Add_UnparseableConfigLeftUntouched(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	const corrupt = "[profiles.existing\nemail = \"user@example.com\"\n"
+	writeConfig(t, configDir, corrupt)
+
+	result := runCfVaultWithStdin(t, envVars, strings.NewReader(testAPIToken), "add", "example", "--"+flagAuthValueStdin)
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+	}
+	if !strings.Contains(result.Stderr, "failed to parse the configuration file") {
+		t.Errorf("expected config parse error, got stderr=%q", result.Stderr)
+	}
+	data, err := os.ReadFile(filepath.Join(configDir, configFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != corrupt {
+		t.Errorf("expected config to be left untouched, got %q", data)
+	}
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); ok {
+		t.Error("expected no credential to be stored")
+	}
+}
+
 func TestIntegration_Add_UnknownTemplateRejectedBeforeCredentials(t *testing.T) {
 	_, _, envVars, cleanup := setupTestEnv(t)
 	defer cleanup()

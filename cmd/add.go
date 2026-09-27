@@ -92,6 +92,7 @@ var addCmd = &cobra.Command{
 		useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
 		emailAddress, _ := cmd.Flags().GetString(flagEmail)
 		authValueFromStdin, _ := cmd.Flags().GetBool(flagAuthValueStdin)
+		force, _ := cmd.Flags().GetBool(flagForce)
 
 		if err := validatePolicyTemplate(profileTemplate); err != nil {
 			log.Fatal(err)
@@ -115,6 +116,36 @@ var addCmd = &cobra.Command{
 			secretBackend = secretBackendAgeYubikey
 		}
 
+		configDir, err := resolveConfigDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+		configPath := filepath.Join(configDir, configFileName)
+
+		existingConfigFileContents, err := os.ReadFile(configPath)
+		if err != nil && !os.IsNotExist(err) {
+			log.Fatal(err)
+		}
+
+		// A config that fails to parse must stop here: carrying on with an empty
+		// profile map would pass the existence check below and then truncate the
+		// file, deleting every profile in it.
+		tomlConfigStruct := tomlConfig{}
+		if err := toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct); err != nil {
+			log.Fatalf(errFmtParseConfigFile, configPath, err)
+		}
+
+		// If this is the first profile, initialise the map.
+		if len(tomlConfigStruct.Profiles) == 0 {
+			tomlConfigStruct.Profiles = make(map[string]profile)
+		}
+
+		// Checked before reading any credentials so an accidental overwrite
+		// fails without the user entering (or piping) a secret for nothing.
+		if _, exists := tomlConfigStruct.Profiles[profileName]; exists && !force {
+			log.Fatalf(errFmtProfileExists, profileName, configPath)
+		}
+
 		emailAddress, authValue, err := readCredentials(emailAddress, authValueFromStdin)
 		if err != nil {
 			log.Fatalf(errFmtReadAuthValue, err)
@@ -131,33 +162,7 @@ var addCmd = &cobra.Command{
 			log.Fatal(errEmailRequiredForAPIKey)
 		}
 
-		configDir, err := resolveConfigDir()
-		if err != nil {
-			log.Fatal(err)
-		}
-		configPath := filepath.Join(configDir, configFileName)
-
 		os.MkdirAll(configDir, 0700)
-		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			file, err := os.Create(configPath)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer file.Close()
-		}
-
-		existingConfigFileContents, err := os.ReadFile(configPath)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		tomlConfigStruct := tomlConfig{}
-		toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct)
-
-		// If this is the first profile, initialise the map.
-		if len(tomlConfigStruct.Profiles) == 0 {
-			tomlConfigStruct.Profiles = make(map[string]profile)
-		}
 
 		newProfile := profile{
 			Email:    emailAddress,
