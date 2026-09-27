@@ -52,6 +52,10 @@ var addCmd = &cobra.Command{
   Add a new profile (you will be prompted for credentials)
 
     $ cf-vault add example-profile
+
+  Add a read-only short lived token profile restricted to a single account
+
+    $ cf-vault add example-profile --profile-template read-only --session-duration 15m --account-id 01a7362d577a6c3019a474fd6f485823
 `,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -72,8 +76,20 @@ var addCmd = &cobra.Command{
 		}
 		sessionDuration, _ := cmd.Flags().GetString(flagSessionDuration)
 		profileTemplate, _ := cmd.Flags().GetString(flagProfileTemplate)
+		accountIDs, _ := cmd.Flags().GetStringSlice(flagAccountID)
+		zoneIDs, _ := cmd.Flags().GetStringSlice(flagZoneID)
 		useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
 		useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
+
+		if profileTemplate == "" && (len(accountIDs) > 0 || len(zoneIDs) > 0) {
+			log.Fatal(errResourceIDsNeedTemplate)
+		}
+		if err := validateResourceIDs("account", accountIDs); err != nil {
+			log.Fatal(err)
+		}
+		if err := validateResourceIDs("zone", zoneIDs); err != nil {
+			log.Fatal(err)
+		}
 
 		var secretBackend string
 		switch {
@@ -161,7 +177,7 @@ var addCmd = &cobra.Command{
 				log.Fatal(errMsgUserFetchForPolicy)
 			}
 
-			generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, userDetails.ID)
+			generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, userDetails.ID, accountIDs, zoneIDs)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -232,6 +248,20 @@ func validateProfileName(name string) error {
 	return nil
 }
 
+// resourceIDRE matches Cloudflare account and zone identifiers. IDs are
+// interpolated into policy resource keys, so anything else (wildcards, dots)
+// must be rejected to avoid silently widening or corrupting the scope.
+var resourceIDRE = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+func validateResourceIDs(kind string, ids []string) error {
+	for _, id := range ids {
+		if !resourceIDRE.MatchString(id) {
+			return fmt.Errorf(errFmtInvalidResourceID, kind, id)
+		}
+	}
+	return nil
+}
+
 func determineAuthType(s string) (string, error) {
 	if apiTokenMatch, _ := regexp.MatchString("[A-Za-z0-9-_]{40}", s); apiTokenMatch {
 		log.Debug("API token detected")
@@ -244,7 +274,19 @@ func determineAuthType(s string) (string, error) {
 	}
 }
 
-func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, userID string) ([]policy, error) {
+// generatePolicy builds the policies for a predefined template. Optional
+// accountIDs and zoneIDs narrow the resources the policies apply to:
+//
+//	accountIDs  zoneIDs  account policy     zone policy
+//	----------  -------  -----------------  ------------------------------
+//	-           -        all accounts       all zones
+//	set         -        listed accounts    all zones in listed accounts
+//	-           set      (omitted)          listed zones
+//	set         set      listed accounts    listed zones
+//
+// Restricting to zones alone omits the account policy entirely so the token
+// doesn't quietly retain account-wide permissions across every account.
+func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, userID string, accountIDs, zoneIDs []string) ([]policy, error) {
 	page, err := client.User.Tokens.PermissionGroups.List(ctx, user.TokenPermissionGroupListParams{})
 	if err != nil {
 		return nil, fmt.Errorf(errFmtFetchPermissionGroups, err)
@@ -282,27 +324,61 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 		return nil, fmt.Errorf(errFmtUnknownPolicyTemplate, policyType)
 	}
 
-	if len(accountGroups) == 0 || len(zoneGroups) == 0 || len(userGroups) == 0 {
+	emitAccountPolicy := len(accountIDs) > 0 || len(zoneIDs) == 0
+	if (emitAccountPolicy && len(accountGroups) == 0) || len(zoneGroups) == 0 || len(userGroups) == 0 {
 		return nil, fmt.Errorf(errFmtEmptyPolicyBucket, policyType, len(accountGroups), len(zoneGroups), len(userGroups))
 	}
 
-	return []policy{
-		{
+	var policies []policy
+	if emitAccountPolicy {
+		policies = append(policies, policy{
 			Effect:           policyEffectAllow,
-			Resources:        map[string]interface{}{policyResourceAllAccounts: "*"},
+			Resources:        accountResources(accountIDs),
 			PermissionGroups: accountGroups,
-		},
-		{
+		})
+	}
+	return append(policies,
+		policy{
 			Effect:           policyEffectAllow,
-			Resources:        map[string]interface{}{policyResourceAllZones: "*"},
+			Resources:        zoneResources(accountIDs, zoneIDs),
 			PermissionGroups: zoneGroups,
 		},
-		{
+		policy{
 			Effect:           policyEffectAllow,
 			Resources:        map[string]interface{}{policyResourceUserPrefix + userID: "*"},
 			PermissionGroups: userGroups,
 		},
-	}, nil
+	), nil
+}
+
+func accountResources(accountIDs []string) map[string]interface{} {
+	if len(accountIDs) == 0 {
+		return map[string]interface{}{policyResourceAllAccounts: "*"}
+	}
+	resources := make(map[string]interface{}, len(accountIDs))
+	for _, id := range accountIDs {
+		resources[policyResourceAccountPrefix+id] = "*"
+	}
+	return resources
+}
+
+func zoneResources(accountIDs, zoneIDs []string) map[string]interface{} {
+	switch {
+	case len(zoneIDs) > 0:
+		resources := make(map[string]interface{}, len(zoneIDs))
+		for _, id := range zoneIDs {
+			resources[policyResourceZonePrefix+id] = "*"
+		}
+		return resources
+	case len(accountIDs) > 0:
+		resources := make(map[string]interface{}, len(accountIDs))
+		for _, id := range accountIDs {
+			resources[policyResourceAccountPrefix+id] = map[string]interface{}{policyResourceAllZones: "*"}
+		}
+		return resources
+	default:
+		return map[string]interface{}{policyResourceAllZones: "*"}
+	}
 }
 
 func filterReadGroups(groups []permissionGroup) []permissionGroup {

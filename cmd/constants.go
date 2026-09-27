@@ -39,14 +39,18 @@ const (
 	policyTemplateWriteEverything = "write-everything"
 
 	// Cloudflare API token policy values.
-	policyEffectAllow         = "allow"
-	policyResourceAllAccounts = "com.cloudflare.api.account.*"
-	policyResourceAllZones    = "com.cloudflare.api.account.zone.*"
-	policyResourceUserPrefix  = "com.cloudflare.api.user."
+	policyEffectAllow           = "allow"
+	policyResourceAccountPrefix = "com.cloudflare.api.account."
+	policyResourceZonePrefix    = "com.cloudflare.api.account.zone."
+	policyResourceUserPrefix    = "com.cloudflare.api.user."
+	policyResourceAllAccounts   = policyResourceAccountPrefix + "*"
+	policyResourceAllZones      = policyResourceZonePrefix + "*"
 
 	// Command line flag names shared between flag registration and lookup.
 	flagVerbose         = "verbose"
 	flagProfileTemplate = "profile-template"
+	flagAccountID       = "account-id"
+	flagZoneID          = "zone-id"
 	flagSessionDuration = "session-duration"
 	flagSecureEnclave   = "secure-enclave"
 	flagYubikey         = "yubikey"

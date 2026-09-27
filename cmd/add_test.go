@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -191,7 +192,7 @@ func TestGeneratePolicy_ReadOnly(t *testing.T) {
 	srv := newMockPermGroupServer(t, representativeGroups)
 	client := newTestClient(t, srv.URL)
 
-	policies, err := generatePolicy(context.Background(), client, "read-only", "user-123")
+	policies, err := generatePolicy(context.Background(), client, "read-only", "user-123", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestGeneratePolicy_WriteEverything(t *testing.T) {
 	srv := newMockPermGroupServer(t, representativeGroups)
 	client := newTestClient(t, srv.URL)
 
-	policies, err := generatePolicy(context.Background(), client, "write-everything", "user-456")
+	policies, err := generatePolicy(context.Background(), client, "write-everything", "user-456", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -275,12 +276,160 @@ func TestGeneratePolicy_UnknownType(t *testing.T) {
 	srv := newMockPermGroupServer(t, representativeGroups)
 	client := newTestClient(t, srv.URL)
 
-	_, err := generatePolicy(context.Background(), client, "superadmin", "user-789")
+	_, err := generatePolicy(context.Background(), client, "superadmin", "user-789", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for unknown policy type, got nil")
 	}
 	if !strings.Contains(err.Error(), "read-only") || !strings.Contains(err.Error(), "write-everything") {
 		t.Errorf("error should mention valid policy names, got: %v", err)
+	}
+}
+
+func TestGeneratePolicy_ResourceRestrictions(t *testing.T) {
+	const (
+		acctA = "01a7362d577a6c3019a474fd6f485823"
+		acctB = "9a7806061c88ada191ed06f989cc3dac"
+		zoneA = "023e105f4ecef8ad9ca31a8372d0c353"
+		zoneB = "353c0d2738a13ac9da8fece4f501e320"
+	)
+
+	// Each expected policy pairs its resources with the permission group ID
+	// prefix of the bucket it must carry, so a restriction applied to the
+	// wrong bucket (e.g. zone resources on account permissions) fails.
+	type wantPolicy struct {
+		groupPrefix string
+		resources   map[string]interface{}
+	}
+	userPolicy := wantPolicy{"user-", map[string]interface{}{"com.cloudflare.api.user.user-123": "*"}}
+
+	tests := []struct {
+		name       string
+		accountIDs []string
+		zoneIDs    []string
+		want       []wantPolicy
+	}{
+		{
+			name: "unrestricted",
+			want: []wantPolicy{
+				{"acct-", map[string]interface{}{"com.cloudflare.api.account.*": "*"}},
+				{"zone-", map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"}},
+				userPolicy,
+			},
+		},
+		{
+			name:       "accounts scope account policy and nest zones under them",
+			accountIDs: []string{acctA, acctB},
+			want: []wantPolicy{
+				{"acct-", map[string]interface{}{
+					"com.cloudflare.api.account." + acctA: "*",
+					"com.cloudflare.api.account." + acctB: "*",
+				}},
+				{"zone-", map[string]interface{}{
+					"com.cloudflare.api.account." + acctA: map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+					"com.cloudflare.api.account." + acctB: map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+				}},
+				userPolicy,
+			},
+		},
+		{
+			name:    "zones alone drop the account policy",
+			zoneIDs: []string{zoneA, zoneB},
+			want: []wantPolicy{
+				{"zone-", map[string]interface{}{
+					"com.cloudflare.api.account.zone." + zoneA: "*",
+					"com.cloudflare.api.account.zone." + zoneB: "*",
+				}},
+				userPolicy,
+			},
+		},
+		{
+			name:       "zones take precedence over accounts for the zone policy",
+			accountIDs: []string{acctA},
+			zoneIDs:    []string{zoneA},
+			want: []wantPolicy{
+				{"acct-", map[string]interface{}{"com.cloudflare.api.account." + acctA: "*"}},
+				{"zone-", map[string]interface{}{"com.cloudflare.api.account.zone." + zoneA: "*"}},
+				userPolicy,
+			},
+		},
+	}
+
+	srv := newMockPermGroupServer(t, representativeGroups)
+	client := newTestClient(t, srv.URL)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policies, err := generatePolicy(context.Background(), client, "read-only", "user-123", tt.accountIDs, tt.zoneIDs)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(policies) != len(tt.want) {
+				t.Fatalf("expected %d policies, got %d: %+v", len(tt.want), len(policies), policies)
+			}
+			for i, want := range tt.want {
+				if !reflect.DeepEqual(policies[i].Resources, want.resources) {
+					t.Errorf("policy[%d] resources:\n got  %v\n want %v", i, policies[i].Resources, want.resources)
+				}
+				for _, g := range policies[i].PermissionGroups {
+					if !strings.HasPrefix(g.ID, want.groupPrefix) {
+						t.Errorf("policy[%d] carries %q, expected only %s* groups", i, g.ID, want.groupPrefix)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestValidateResourceIDs(t *testing.T) {
+	valid := []string{"01a7362d577a6c3019a474fd6f485823", "023e105f4ecef8ad9ca31a8372d0c353"}
+	if err := validateResourceIDs("account", valid); err != nil {
+		t.Errorf("expected valid IDs to pass, got %v", err)
+	}
+	if err := validateResourceIDs("account", nil); err != nil {
+		t.Errorf("expected no IDs to pass, got %v", err)
+	}
+
+	invalid := []string{
+		"",
+		"*",
+		"01A7362D577A6C3019A474FD6F485823",  // uppercase
+		"01a7362d577a6c3019a474fd6f48582",   // 31 chars
+		"01a7362d577a6c3019a474fd6f4858233", // 33 chars
+		"01a7362d577a6c3019a474fd6f48582g",  // non-hex
+		"zone.023e105f4ecef8ad9ca31a8372d0",
+	}
+	for _, id := range invalid {
+		// Pair with a valid ID so a check that only inspects the first entry fails.
+		err := validateResourceIDs("zone", []string{valid[0], id})
+		if err == nil {
+			t.Errorf("expected %q to be rejected", id)
+			continue
+		}
+		if !strings.Contains(err.Error(), "zone ID") {
+			t.Errorf("error should name the resource kind, got %v", err)
+		}
+	}
+}
+
+func TestIntegration_Add_ResourceIDsRequireTemplate(t *testing.T) {
+	result := runCfVault(t, nil, "add", "example", "--account-id", "01a7362d577a6c3019a474fd6f485823")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+	}
+	if combined := result.Stdout + result.Stderr; !strings.Contains(combined, "can only be used with --profile-template") {
+		t.Errorf("expected template requirement error, got stdout=%q stderr=%q", result.Stdout, result.Stderr)
+	}
+}
+
+func TestIntegration_Add_InvalidZoneID(t *testing.T) {
+	result := runCfVault(t, nil, "add", "example", "--profile-template", "read-only", "--zone-id", "*")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+	}
+	if combined := result.Stdout + result.Stderr; !strings.Contains(combined, "zone ID") || !strings.Contains(combined, "is invalid") {
+		t.Errorf("expected invalid zone ID error, got stdout=%q stderr=%q", result.Stdout, result.Stderr)
 	}
 }
 
@@ -293,12 +442,46 @@ func TestGeneratePolicy_EmptyBucket(t *testing.T) {
 	srv := newMockPermGroupServer(t, groups)
 	client := newTestClient(t, srv.URL)
 
-	_, err := generatePolicy(context.Background(), client, "read-only", "user-000")
+	_, err := generatePolicy(context.Background(), client, "read-only", "user-000", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for empty zone bucket, got nil")
 	}
 	if !strings.Contains(err.Error(), "empty") || !strings.Contains(err.Error(), "zone=0") {
 		t.Errorf("error should mention empty bucket and zone=0, got: %v", err)
+	}
+}
+
+// The account bucket only matters when an account policy is emitted. A
+// zone-only restriction drops that policy, so a missing account bucket must
+// not block it — but it still must when accounts are in play.
+func TestGeneratePolicy_EmptyAccountBucket(t *testing.T) {
+	const acct = "01a7362d577a6c3019a474fd6f485823"
+	const zone = "023e105f4ecef8ad9ca31a8372d0c353"
+	groups := []mockPermGroup{
+		{ID: "zone-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account.zone"}},
+		{ID: "user-read", Name: "Memberships Read", Scopes: []string{"com.cloudflare.api.user"}},
+	}
+	srv := newMockPermGroupServer(t, groups)
+	client := newTestClient(t, srv.URL)
+
+	policies, err := generatePolicy(context.Background(), client, "read-only", "user-000", nil, []string{zone})
+	if err != nil {
+		t.Fatalf("zone-only restriction should not need account groups, got: %v", err)
+	}
+	if len(policies) != 2 {
+		t.Fatalf("expected zone and user policies, got %d", len(policies))
+	}
+
+	cases := map[string]struct{ accountIDs, zoneIDs []string }{
+		"unrestricted":        {nil, nil},
+		"account restricted":  {[]string{acct}, nil},
+		"account and zone ID": {[]string{acct}, []string{zone}},
+	}
+	for name, c := range cases {
+		_, err := generatePolicy(context.Background(), client, "read-only", "user-000", c.accountIDs, c.zoneIDs)
+		if err == nil || !strings.Contains(err.Error(), "account=0") {
+			t.Errorf("%s: expected empty account bucket error, got %v", name, err)
+		}
 	}
 }
 
@@ -310,7 +493,7 @@ func TestGeneratePolicy_APIError(t *testing.T) {
 	t.Cleanup(srv.Close)
 	client := newTestClient(t, srv.URL)
 
-	_, err := generatePolicy(context.Background(), client, "read-only", "user-err")
+	_, err := generatePolicy(context.Background(), client, "read-only", "user-err", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for API 500 response, got nil")
 	}
