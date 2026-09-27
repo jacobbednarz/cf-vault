@@ -89,7 +89,9 @@ $ brew install jacobbednarz/tap/cf-vault
    - `cf-vault add api-token-to-create-other-tokens`
 
    There is no limit on how many profiles you have if you prefer to have
-   specific profiles for your use cases.
+   specific profiles for your use cases. Adding a profile with a name that
+   already exists fails rather than replacing it; pass `--force` to overwrite
+   it.
 
 1. Now that you have created a profile, you can use it with `cf-vault exec
    [your-profile-name]`.
@@ -141,6 +143,35 @@ $ exit
 $ env | grep -i cloudflare
 # => no results
 ```
+
+## Non-interactive use
+
+`cf-vault add` prompts for the email address and authentication value when
+run in a terminal. For scripts and CI, provide both up front instead and
+nothing is prompted for:
+
+- The authentication value is read from stdin with
+  `--authentication-value-stdin`, or from the `CF_VAULT_AUTH_VALUE`
+  environment variable. When both are provided, stdin wins.
+- The email address is passed with `--email`. It is required for global API
+  keys and not needed for API tokens.
+
+```shell
+$ printf '%s' "$CLOUDFLARE_API_TOKEN" | cf-vault add ci --authentication-value-stdin
+$ CF_VAULT_AUTH_VALUE="$CLOUDFLARE_API_KEY" cf-vault add ci --email jacob@example.com
+```
+
+There is intentionally no flag that takes the authentication value directly.
+Command line arguments are visible to other users on the machine via `ps`, and
+end up in shell history and CI logs.
+
+`add` fails instead of prompting when stdin isn't a terminal and neither
+source is provided, or when a global API key is given without `--email`. Some
+secret storage still needs a person present regardless of these options: the
+macOS Keychain may ask for permission, and the [hardware-backed
+credentials](#hardware-backed-credentials) always need a physical touch. On
+headless machines, use the file backend (`CF_VAULT_BACKEND=file`) with
+`CF_VAULT_FILE_PASSPHRASE` set.
 
 ## Hardware-backed credentials
 

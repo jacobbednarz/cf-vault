@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,6 +51,13 @@ type cfVaultResult struct {
 // they can't leak into `exec` assertions or trigger its preexisting warning.
 func runCfVault(t *testing.T, extraEnv []string, args ...string) cfVaultResult {
 	t.Helper()
+	return runCfVaultWithStdin(t, extraEnv, nil, args...)
+}
+
+// runCfVaultWithStdin is runCfVault with stdin connected to the given reader.
+// A nil reader leaves stdin attached to the null device.
+func runCfVaultWithStdin(t *testing.T, extraEnv []string, stdin io.Reader, args ...string) cfVaultResult {
+	t.Helper()
 	if binaryPath == "" {
 		t.Skip("cf-vault binary not built, skipping integration test")
 	}
@@ -57,9 +66,11 @@ func runCfVault(t *testing.T, extraEnv []string, args ...string) cfVaultResult {
 	for _, name := range credentialEnvVars {
 		env.Unset(name)
 	}
+	env.Unset(envAuthValue)
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Env = append(env, extraEnv...)
+	cmd.Stdin = stdin
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -306,6 +317,29 @@ func TestIntegration_Exec_NestedSessionRejected(t *testing.T) {
 func writeKeyringItem(t *testing.T, keyringDir, key string, data []byte) {
 	t.Helper()
 
+	if err := openTestKeyring(t, keyringDir).Set(keyring.Item{Key: key, Data: data}); err != nil {
+		t.Fatalf("writeKeyringItem: failed to set item %q: %v", key, err)
+	}
+}
+
+// readKeyringItem returns the data stored under key in the test file keyring,
+// and whether it exists at all.
+func readKeyringItem(t *testing.T, keyringDir, key string) ([]byte, bool) {
+	t.Helper()
+
+	item, err := openTestKeyring(t, keyringDir).Get(key)
+	if errors.Is(err, keyring.ErrKeyNotFound) {
+		return nil, false
+	}
+	if err != nil {
+		t.Fatalf("readKeyringItem: failed to get item %q: %v", key, err)
+	}
+	return item.Data, true
+}
+
+func openTestKeyring(t *testing.T, keyringDir string) keyring.Keyring {
+	t.Helper()
+
 	cfg := keyringDefaults
 	cfg.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
 	cfg.FileDir = keyringDir + "/"
@@ -315,11 +349,9 @@ func writeKeyringItem(t *testing.T, keyringDir, key string, data []byte) {
 
 	ring, err := keyring.Open(cfg)
 	if err != nil {
-		t.Fatalf("writeKeyringItem: failed to open keyring: %v", err)
+		t.Fatalf("openTestKeyring: failed to open keyring: %v", err)
 	}
-	if err := ring.Set(keyring.Item{Key: key, Data: data}); err != nil {
-		t.Fatalf("writeKeyringItem: failed to set item %q: %v", key, err)
-	}
+	return ring
 }
 
 func TestIntegration_Exec_APIKey(t *testing.T) {

@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go/v6"
@@ -56,6 +58,14 @@ var addCmd = &cobra.Command{
   Add a read-only short lived token profile restricted to a single account
 
     $ cf-vault add example-profile --profile-template read-only --session-duration 15m --account-id 01a7362d577a6c3019a474fd6f485823
+
+  Add a profile without prompting, reading an API token from stdin
+
+    $ printf '%s' "$TOKEN" | cf-vault add example-profile --authentication-value-stdin
+
+  Add a profile without prompting, reading a global API key from the environment
+
+    $ CF_VAULT_AUTH_VALUE="$API_KEY" cf-vault add example-profile --email jacob@example.com
 `,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -80,6 +90,13 @@ var addCmd = &cobra.Command{
 		zoneIDs, _ := cmd.Flags().GetStringSlice(flagZoneID)
 		useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
 		useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
+		emailAddress, _ := cmd.Flags().GetString(flagEmail)
+		authValueFromStdin, _ := cmd.Flags().GetBool(flagAuthValueStdin)
+		force, _ := cmd.Flags().GetBool(flagForce)
+
+		if err := validatePolicyTemplate(profileTemplate); err != nil {
+			log.Fatal(err)
+		}
 
 		if profileTemplate == "" && (len(accountIDs) > 0 || len(zoneIDs) > 0) {
 			log.Fatal(errResourceIDsNeedTemplate)
@@ -99,51 +116,53 @@ var addCmd = &cobra.Command{
 			secretBackend = secretBackendAgeYubikey
 		}
 
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print(promptEmailAddress)
-		emailAddress, _ := reader.ReadString('\n')
-		emailAddress = strings.TrimSpace(emailAddress)
-
-		fmt.Print(promptAuthValue)
-		byteAuthValue, err := term.ReadPassword(int(os.Stdin.Fd()))
-		if err != nil {
-			log.Fatalf(errFmtReadAuthValue, err)
-		}
-		authValue := string(byteAuthValue)
-		fmt.Println()
-
-		authType, err := determineAuthType(strings.TrimSpace(authValue))
-		if err != nil {
-			log.Fatalf(errFmtDetectAuthType, err)
-		}
-
 		configDir, err := resolveConfigDir()
 		if err != nil {
 			log.Fatal(err)
 		}
 		configPath := filepath.Join(configDir, configFileName)
 
-		os.MkdirAll(configDir, 0700)
-		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			file, err := os.Create(configPath)
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer file.Close()
-		}
-
 		existingConfigFileContents, err := os.ReadFile(configPath)
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			log.Fatal(err)
 		}
 
+		// A config that fails to parse must stop here: carrying on with an empty
+		// profile map would pass the existence check below and then truncate the
+		// file, deleting every profile in it.
 		tomlConfigStruct := tomlConfig{}
-		toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct)
+		if err := toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct); err != nil {
+			log.Fatalf(errFmtParseConfigFile, configPath, err)
+		}
 
 		// If this is the first profile, initialise the map.
 		if len(tomlConfigStruct.Profiles) == 0 {
 			tomlConfigStruct.Profiles = make(map[string]profile)
 		}
+
+		// Checked before reading any credentials so an accidental overwrite
+		// fails without the user entering (or piping) a secret for nothing.
+		if _, exists := tomlConfigStruct.Profiles[profileName]; exists && !force {
+			log.Fatalf(errFmtProfileExists, profileName, configPath)
+		}
+
+		emailAddress, authValue, err := readCredentials(emailAddress, authValueFromStdin)
+		if err != nil {
+			log.Fatalf(errFmtReadAuthValue, err)
+		}
+
+		authType, err := determineAuthType(authValue)
+		if err != nil {
+			log.Fatalf(errFmtDetectAuthType, err)
+		}
+
+		// Global API keys authenticate with the email alongside the key; API
+		// tokens carry the identity themselves.
+		if authType == authTypeAPIKey && emailAddress == "" {
+			log.Fatal(errEmailRequiredForAPIKey)
+		}
+
+		os.MkdirAll(configDir, 0700)
 
 		newProfile := profile{
 			Email:    emailAddress,
@@ -272,6 +291,60 @@ func determineAuthType(s string) (string, error) {
 	} else {
 		return "", errInvalidAuthValueFormat
 	}
+}
+
+// policyTemplates are the values accepted by `--profile-template`.
+var policyTemplates = []string{policyTemplateReadOnly, policyTemplateWriteEverything}
+
+// validatePolicyTemplate rejects unknown template names up front, before the
+// user is asked for credentials that would only be thrown away.
+func validatePolicyTemplate(name string) error {
+	if name == "" || slices.Contains(policyTemplates, name) {
+		return nil
+	}
+	return fmt.Errorf(errFmtUnknownPolicyTemplate, name)
+}
+
+// readCredentials resolves the email address and authentication value for a
+// new profile. The authentication value comes from the first available of:
+//
+//  1. stdin, when `--authentication-value-stdin` is set
+//  2. the CF_VAULT_AUTH_VALUE environment variable
+//  3. an interactive prompt, along with the email if `--email` wasn't passed
+//
+// The non-interactive sources never prompt: without a terminal there is nobody
+// to answer, and a prompt reading from piped stdin would consume the secret.
+func readCredentials(emailAddress string, fromStdin bool) (string, string, error) {
+	if fromStdin {
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", "", err
+		}
+		return emailAddress, strings.TrimSpace(string(b)), nil
+	}
+
+	if authValue, ok := os.LookupEnv(envAuthValue); ok {
+		return emailAddress, strings.TrimSpace(authValue), nil
+	}
+
+	stdinFd := int(os.Stdin.Fd())
+	if !term.IsTerminal(stdinFd) {
+		return "", "", errAuthValueSourceRequired
+	}
+
+	if emailAddress == "" {
+		fmt.Print(promptEmailAddress)
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		emailAddress = strings.TrimSpace(line)
+	}
+
+	fmt.Print(promptAuthValue)
+	b, err := term.ReadPassword(stdinFd)
+	fmt.Println()
+	if err != nil {
+		return "", "", err
+	}
+	return emailAddress, strings.TrimSpace(string(b)), nil
 }
 
 // generatePolicy builds the policies for a predefined template. Optional
