@@ -189,6 +189,28 @@ Examples:
 - `cf-vault add my-read-profile-name --profile-template "read-only" --session-duration "15m"`
 - `cf-vault add my-write-profile-name --profile-template "write-everything" --session-duration "15m"`
 
+### Restricting templates to specific accounts or zones
+
+By default the templates apply to every account and zone you have access to.
+Pass `--account-id` and/or `--zone-id` (repeatable, or comma separated) to
+narrow the generated policies:
+
+| Flags                          | Account permissions | Zone permissions                  |
+| ------------------------------ | ------------------- | --------------------------------- |
+| neither                        | all accounts        | all zones                         |
+| `--account-id`                 | listed accounts     | all zones in the listed accounts  |
+| `--zone-id`                    | none                | listed zones                      |
+| `--account-id` and `--zone-id` | listed accounts     | listed zones                      |
+
+Restricting to zones alone drops the account permissions entirely so the token
+doesn't retain account-wide access. User permissions are always scoped to
+yourself.
+
+Examples:
+
+- `cf-vault add my-account-profile --profile-template "write-everything" --session-duration "15m" --account-id "01a7362d577a6c3019a474fd6f485823"`
+- `cf-vault add my-zone-profile --profile-template "read-only" --session-duration "15m" --zone-id "023e105f4ecef8ad9ca31a8372d0c353" --zone-id "353c0d2738a13ac9da8fece4f501e320"`
+
 ## Generating token policies
 
 While TOML is more readable, its not always straight forward to generate the

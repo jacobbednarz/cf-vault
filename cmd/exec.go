@@ -173,18 +173,14 @@ var execCmd = &cobra.Command{
 						ID: cloudflare.F(g.ID),
 					})
 				}
-				resources := shared.TokenPolicyResourcesIAMResourcesTypeObjectStringParam{}
-				for k, v := range p.Resources {
-					if s, ok := v.(string); ok {
-						resources[k] = s
-					} else {
-						resources[k] = fmt.Sprintf("%v", v)
-					}
+				resources, err := tokenPolicyResources(p.Resources)
+				if err != nil {
+					log.Fatal(err)
 				}
 				tokenPolicies = append(tokenPolicies, shared.TokenPolicyParam{
 					Effect:           cloudflare.F(shared.TokenPolicyEffect(p.Effect)),
 					PermissionGroups: cloudflare.F(groups),
-					Resources:        cloudflare.F[shared.TokenPolicyResourcesUnionParam](resources),
+					Resources:        cloudflare.F(resources),
 				})
 			}
 
@@ -231,4 +227,41 @@ var execCmd = &cobra.Command{
 
 		syscall.Exec(pathtoExec, args, env)
 	},
+}
+
+// tokenPolicyResources converts resources decoded from the config file into
+// the SDK's resource union. Cloudflare accepts either flat resources
+// (`"com.cloudflare.api.account.zone.<id>" = "*"`) or resources nested under
+// an account (`"com.cloudflare.api.account.<id>" = { "com.cloudflare.api.account.zone.*" = "*" }`),
+// and the SDK can't express a mix of both in a single policy.
+func tokenPolicyResources(resources map[string]interface{}) (shared.TokenPolicyResourcesUnionParam, error) {
+	flat := shared.TokenPolicyResourcesIAMResourcesTypeObjectStringParam{}
+	nested := shared.TokenPolicyResourcesIAMResourcesTypeObjectNestedParam{}
+	for key, value := range resources {
+		switch v := value.(type) {
+		case string:
+			flat[key] = v
+		case map[string]interface{}:
+			inner := make(map[string]string, len(v))
+			for innerKey, innerValue := range v {
+				s, ok := innerValue.(string)
+				if !ok {
+					return nil, fmt.Errorf(errFmtUnsupportedResources, resources)
+				}
+				inner[innerKey] = s
+			}
+			nested[key] = inner
+		default:
+			return nil, fmt.Errorf(errFmtUnsupportedResources, resources)
+		}
+	}
+
+	switch {
+	case len(nested) == 0:
+		return flat, nil
+	case len(flat) == 0:
+		return nested, nil
+	default:
+		return nil, fmt.Errorf(errFmtUnsupportedResources, resources)
+	}
 }

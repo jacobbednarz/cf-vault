@@ -11,6 +11,7 @@ var (
 	errAgeNotFound              = errors.New("age not found on PATH; install it (`brew install age`)")
 	errYubikeyIdentityNotFound  = errors.New("no YubiKey identity found; run `age-plugin-yubikey --generate` to enroll one, then re-run this command")
 	errYubikeyRecipientNotFound = errors.New("could not extract age1yubikey1… recipient from `age-plugin-yubikey --identity` output")
+	errResourceIDsNeedTemplate  = errors.New("--" + flagAccountID + " and --" + flagZoneID + " can only be used with --" + flagProfileTemplate)
 )
 
 // Error message strings. Most are format strings that interpolate context or
@@ -33,6 +34,8 @@ const (
 	errFmtFetchPermissionGroups = "failed to fetch permission groups: %w"
 	errFmtUnknownPolicyTemplate = "unable to generate policy for %q, valid policy names: [" + policyTemplateReadOnly + ", " + policyTemplateWriteEverything + "]"
 	errFmtEmptyPolicyBucket     = "one or more policy buckets is empty for policy type %q (account=%d, zone=%d, user=%d); check API permissions"
+	errFmtInvalidResourceID     = "%s ID %q is invalid; expected a 32 character hexadecimal string"
+	errFmtUnsupportedResources  = "policy resources must be either all strings or all tables of strings, got %v"
 
 	// Keyring backend.
 	errFmtOpenKeyring    = "failed to open keyring backend: %s"
