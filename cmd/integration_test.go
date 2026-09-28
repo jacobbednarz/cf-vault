@@ -706,7 +706,7 @@ func TestIntegration_Exec_CommandArguments(t *testing.T) {
 	}
 }
 
-// tokenCreation is a POST /user/tokens request received by the mock API.
+// tokenCreation is a token creation request received by the mock API.
 type tokenCreation struct {
 	header http.Header
 	body   map[string]interface{}
@@ -714,14 +714,22 @@ type tokenCreation struct {
 
 // setupShortLivedProfile returns the env for an isolated test install holding
 // a short lived token profile named "shortlived", with the Cloudflare API
-// replaced by a mock that answers token creation with tokenValue. Requests
-// the mock receives are sent on the returned channel.
-func setupShortLivedProfile(t *testing.T, tokenValue string) ([]string, <-chan tokenCreation) {
+// replaced by a mock that answers token creation with tokenValue. With an
+// ownerAccountID the profile holds an account API token, and tokens are only
+// created in that account. Requests the mock receives are sent on the
+// returned channel.
+func setupShortLivedProfile(t *testing.T, ownerAccountID, tokenValue string) ([]string, <-chan tokenCreation) {
 	t.Helper()
+
+	tokensPath, ownerLine := "/user/tokens", ""
+	if ownerAccountID != "" {
+		tokensPath = "/accounts/" + ownerAccountID + "/tokens"
+		ownerLine = fmt.Sprintf("owner_account_id = %q", ownerAccountID)
+	}
 
 	created := make(chan tokenCreation, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/user/tokens" {
+		if r.Method != http.MethodPost || r.URL.Path != tokensPath {
 			http.NotFound(w, r)
 			return
 		}
@@ -749,6 +757,7 @@ func setupShortLivedProfile(t *testing.T, tokenValue string) ([]string, <-chan t
   [profiles.shortlived]
     auth_type = "api_token"
     session_duration = "15m"
+    `+ownerLine+`
 
     [[profiles.shortlived.policies]]
       effect = "allow"
@@ -765,48 +774,59 @@ func setupShortLivedProfile(t *testing.T, tokenValue string) ([]string, <-chan t
 }
 
 func TestIntegration_Exec_ShortLivedToken(t *testing.T) {
-	const shortLived = "cfut_" + testAPIToken + "0a1b2c3d"
-	envVars, created := setupShortLivedProfile(t, shortLived)
+	owners := map[string]struct{ ownerAccountID, shortLived string }{
+		"user owned":    {"", "cfut_" + testAPIToken + "0a1b2c3d"},
+		"account owned": {"01a7362d577a6c3019a474fd6f485823", "cfat_" + testAPIToken + "0a1b2c3d"},
+	}
+	for name, owner := range owners {
+		t.Run(name, func(t *testing.T) {
+			// The mock only answers the owner's tokens endpoint, so a token
+			// created anywhere else fails the command.
+			envVars, created := setupShortLivedProfile(t, owner.ownerAccountID, owner.shortLived)
 
-	before := time.Now()
-	result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
+			before := time.Now()
+			result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
 
-	if result.ExitCode != 0 {
-		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
-	}
-	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN="+shortLived+"\n") {
-		t.Errorf("expected the short lived token in the environment, got:\n%s", result.Stdout)
-	}
-	request := <-created
-	if got := request.header.Get("Authorization"); got != "Bearer "+testAPIToken {
-		t.Errorf("token created with Authorization %q, want the profile's token", got)
-	}
-	// A not_before taken from the local clock makes the token unusable until
-	// Cloudflare's clock catches up, whenever the local one runs ahead.
-	if nb, ok := request.body["not_before"]; ok {
-		t.Errorf("token created with not_before %v, want it left to Cloudflare", nb)
-	}
-	expiresOn, err := time.Parse(time.RFC3339, fmt.Sprint(request.body["expires_on"]))
-	if err != nil {
-		t.Fatalf("expires_on %v: %v", request.body["expires_on"], err)
-	}
-	if want := before.Add(15 * time.Minute); expiresOn.Before(want.Add(-2*time.Second)) || expiresOn.After(want.Add(time.Minute)) {
-		t.Errorf("expires_on = %s, want about 15 minutes from %s", expiresOn, before)
-	}
-	// The profile's policy must arrive whole: a token missing its permission
-	// groups or resources is either rejected or grants nothing.
-	wantPolicies := []interface{}{map[string]interface{}{
-		"effect":            "allow",
-		"permission_groups": []interface{}{map[string]interface{}{"id": "c8fed203ed3043cba015a93ad1616f1f"}},
-		"resources":         map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
-	}}
-	if !reflect.DeepEqual(request.body["policies"], wantPolicies) {
-		t.Errorf("token created with policies %v, want %v", request.body["policies"], wantPolicies)
+			if result.ExitCode != 0 {
+				t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+			}
+			if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN="+owner.shortLived+"\n") {
+				t.Errorf("expected the short lived token in the environment, got:\n%s", result.Stdout)
+			}
+			request := <-created
+			if got := request.header.Get("Authorization"); got != "Bearer "+testAPIToken {
+				t.Errorf("token created with Authorization %q, want the profile's token", got)
+			}
+			// A not_before taken from the local clock makes the token unusable
+			// until Cloudflare's clock catches up, whenever the local one runs
+			// ahead.
+			if nb, ok := request.body["not_before"]; ok {
+				t.Errorf("token created with not_before %v, want it left to Cloudflare", nb)
+			}
+			expiresOn, err := time.Parse(time.RFC3339, fmt.Sprint(request.body["expires_on"]))
+			if err != nil {
+				t.Fatalf("expires_on %v: %v", request.body["expires_on"], err)
+			}
+			if want := before.Add(15 * time.Minute); expiresOn.Before(want.Add(-2*time.Second)) || expiresOn.After(want.Add(time.Minute)) {
+				t.Errorf("expires_on = %s, want about 15 minutes from %s", expiresOn, before)
+			}
+			// The profile's policy must arrive whole: a token missing its
+			// permission groups or resources is either rejected or grants
+			// nothing.
+			wantPolicies := []interface{}{map[string]interface{}{
+				"effect":            "allow",
+				"permission_groups": []interface{}{map[string]interface{}{"id": "c8fed203ed3043cba015a93ad1616f1f"}},
+				"resources":         map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+			}}
+			if !reflect.DeepEqual(request.body["policies"], wantPolicies) {
+				t.Errorf("token created with policies %v, want %v", request.body["policies"], wantPolicies)
+			}
+		})
 	}
 }
 
 func TestIntegration_Exec_ShortLivedTokenWithoutValue(t *testing.T) {
-	envVars, _ := setupShortLivedProfile(t, "")
+	envVars, _ := setupShortLivedProfile(t, "", "")
 
 	result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
 
@@ -860,6 +880,24 @@ func TestIntegration_Exec_UnusableShortLivedProfile(t *testing.T) {
       "com.cloudflare.api.account.zone.*" = "*"
 `,
 			want: `"alow"`,
+		},
+		"owner account on a global API key": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_key"
+  email = "user@example.com"
+  owner_account_id = "01a7362d577a6c3019a474fd6f485823"
+`,
+			want: errOwnerAccountIDForAPIKey.Error(),
+		},
+		// The ID is interpolated into the path tokens are created at.
+		"malformed owner account": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_token"
+  owner_account_id = "../../user"
+`,
+			want: `owner account ID "../../user" is invalid`,
 		},
 	}
 	for name, tt := range tests {

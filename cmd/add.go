@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/user"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -30,6 +29,10 @@ var addCmd = &cobra.Command{
   Add a read-only short lived token profile restricted to a single account
 
     $ cf-vault add example-profile --profile-template read-only --session-duration 15m --account-id 01a7362d577a6c3019a474fd6f485823
+
+  Add a read-only short lived token profile from an account API token
+
+    $ cf-vault add example-profile --owner-account-id 01a7362d577a6c3019a474fd6f485823 --profile-template read-only --session-duration 15m
 
   Add a profile without prompting, reading an API token from stdin
 
@@ -57,6 +60,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	profileTemplate, _ := cmd.Flags().GetString(flagProfileTemplate)
 	accountIDs, _ := cmd.Flags().GetStringSlice(flagAccountID)
 	zoneIDs, _ := cmd.Flags().GetStringSlice(flagZoneID)
+	ownerAccountID, _ := cmd.Flags().GetString(flagOwnerAccountID)
 	useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
 	useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
 	emailAddress, _ := cmd.Flags().GetString(flagEmail)
@@ -80,6 +84,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	if err := validateResourceIDs("zone", zoneIDs); err != nil {
 		return err
+	}
+	if ownerAccountID != "" {
+		if err := validateResourceIDs("owner account", []string{ownerAccountID}); err != nil {
+			return err
+		}
+		for _, id := range accountIDs {
+			if id != ownerAccountID {
+				return fmt.Errorf(errFmtAccountOutsideOwner, ownerAccountID, id)
+			}
+		}
 	}
 
 	var secretBackend string
@@ -130,24 +144,28 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return errEmailRequiredForAPIKey
 	}
 
+	// Scannable tokens say who owns them, so a mismatched flag is caught here;
+	// a legacy token's owner can only be taken from the flag.
+	switch {
+	case ownerAccountID != "" && authType == authTypeAPIKey:
+		return errOwnerAccountIDForAPIKey
+	case ownerAccountID != "" && strings.HasPrefix(authValue, userAPITokenPrefix):
+		return errOwnerAccountIDForUserToken
+	case ownerAccountID == "" && sessionDuration != "" && strings.HasPrefix(authValue, accountAPITokenPrefix):
+		return errOwnerAccountIDRequired
+	}
+
 	newProfile := profile{
 		Email:           emailAddress,
 		AuthType:        authType,
+		OwnerAccountID:  ownerAccountID,
 		SessionDuration: sessionDuration,
 		SecretBackend:   secretBackend,
 	}
 
 	if profileTemplate != "" {
 		cfClient := newClient(authValue, authType, emailAddress)
-
-		// The policies require that one of the resources is the current user,
-		// so the credential being added must be able to read its own user.
-		userDetails, err := cfClient.User.Get(context.Background())
-		if err != nil {
-			return fmt.Errorf(errFmtUserFetchForPolicy, err)
-		}
-
-		generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, userDetails.ID, accountIDs, zoneIDs)
+		generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, ownerAccountID, accountIDs, zoneIDs)
 		if err != nil {
 			return err
 		}
@@ -338,26 +356,18 @@ func readCredentials(emailAddress string, fromStdin bool) (string, string, error
 //
 // Restricting to zones alone omits the account policy entirely so the token
 // doesn't quietly retain account-wide permissions across every account.
-func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, userID string, accountIDs, zoneIDs []string) ([]policy, error) {
-	page, err := client.User.Tokens.PermissionGroups.List(ctx, user.TokenPermissionGroupListParams{})
+//
+// With an ownerAccountID the policies are for an account API token, which can
+// only reach its own account and has no user: "all accounts" becomes the
+// owner, and zones nest under it.
+func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, ownerAccountID string, accountIDs, zoneIDs []string) ([]policy, error) {
+	groups, err := listPermissionGroups(ctx, client, ownerAccountID)
 	if err != nil {
 		return nil, fmt.Errorf(errFmtFetchPermissionGroups, err)
 	}
-
-	var accountGroups, zoneGroups, userGroups []permissionGroup
-	for _, g := range page.Result {
-		for _, scope := range g.Scopes {
-			pg := permissionGroup{ID: g.ID, Name: g.Name}
-			switch scope {
-			case user.TokenPermissionGroupListResponseScopeComCloudflareAPIAccountZone:
-				zoneGroups = append(zoneGroups, pg)
-			case user.TokenPermissionGroupListResponseScopeComCloudflareAPIAccount:
-				accountGroups = append(accountGroups, pg)
-			case user.TokenPermissionGroupListResponseScopeComCloudflareAPIUser:
-				userGroups = append(userGroups, pg)
-			}
-		}
-	}
+	accountGroups := groups[permissionScopeAccount]
+	zoneGroups := groups[permissionScopeZone]
+	userGroups := groups[permissionScopeUser]
 
 	switch policyType {
 	case policyTemplateReadOnly:
@@ -378,8 +388,12 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 	}
 
 	emitAccountPolicy := len(accountIDs) > 0 || len(zoneIDs) == 0
-	if (emitAccountPolicy && len(accountGroups) == 0) || len(zoneGroups) == 0 || len(userGroups) == 0 {
+	emitUserPolicy := ownerAccountID == ""
+	if (emitAccountPolicy && len(accountGroups) == 0) || len(zoneGroups) == 0 || (emitUserPolicy && len(userGroups) == 0) {
 		return nil, fmt.Errorf(errFmtEmptyPolicyBucket, policyType, len(accountGroups), len(zoneGroups), len(userGroups))
+	}
+	if ownerAccountID != "" && len(accountIDs) == 0 {
+		accountIDs = []string{ownerAccountID}
 	}
 
 	var policies []policy
@@ -390,18 +404,26 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 			PermissionGroups: accountGroups,
 		})
 	}
-	return append(policies,
-		policy{
-			Effect:           policyEffectAllow,
-			Resources:        zoneResources(accountIDs, zoneIDs),
-			PermissionGroups: zoneGroups,
-		},
-		policy{
-			Effect:           policyEffectAllow,
-			Resources:        map[string]interface{}{policyResourceUserPrefix + userID: "*"},
-			PermissionGroups: userGroups,
-		},
-	), nil
+	policies = append(policies, policy{
+		Effect:           policyEffectAllow,
+		Resources:        zoneResources(accountIDs, zoneIDs),
+		PermissionGroups: zoneGroups,
+	})
+	if !emitUserPolicy {
+		return policies, nil
+	}
+
+	// User resources can only name the user creating the token, so the
+	// credential being added must be able to read its own user.
+	userDetails, err := client.User.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf(errFmtUserFetchForPolicy, err)
+	}
+	return append(policies, policy{
+		Effect:           policyEffectAllow,
+		Resources:        map[string]interface{}{policyResourceUserPrefix + userDetails.ID: "*"},
+		PermissionGroups: userGroups,
+	}), nil
 }
 
 func accountResources(accountIDs []string) map[string]interface{} {

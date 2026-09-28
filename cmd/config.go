@@ -16,8 +16,12 @@ type tomlConfig struct {
 }
 
 type profile struct {
-	Email           string   `toml:"email"`
-	AuthType        string   `toml:"auth_type"`
+	Email    string `toml:"email"`
+	AuthType string `toml:"auth_type"`
+	// OwnerAccountID is set when the profile's API token is owned by that
+	// account rather than a user. Short lived tokens are then created in, and
+	// can only reach, that account.
+	OwnerAccountID  string   `toml:"owner_account_id,omitempty"`
 	SessionDuration string   `toml:"session_duration,omitempty"`
 	SecretBackend   string   `toml:"secret_backend,omitempty"`
 	Policies        []policy `toml:"policies,omitempty"`
@@ -28,6 +32,15 @@ type profile struct {
 func (p profile) validate() error {
 	if p.AuthType != authTypeAPIKey && p.AuthType != authTypeAPIToken {
 		return fmt.Errorf(errFmtUnknownAuthType, p.AuthType, authTypeAPIKey, authTypeAPIToken)
+	}
+	if p.OwnerAccountID != "" {
+		if p.AuthType == authTypeAPIKey {
+			return errOwnerAccountIDForAPIKey
+		}
+		// The ID becomes part of the API path tokens are created at.
+		if err := validateResourceIDs("owner account", []string{p.OwnerAccountID}); err != nil {
+			return err
+		}
 	}
 	if p.SessionDuration == "" {
 		return nil
