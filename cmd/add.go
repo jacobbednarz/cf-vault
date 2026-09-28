@@ -45,13 +45,13 @@ var addCmd = &cobra.Command{
 		if len(args) < 1 {
 			return errProfileArgRequired
 		}
-		return nil
+		return cobra.ExactArgs(1)(cmd, args)
 	},
 	RunE: runAdd,
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	profileName := strings.TrimSpace(args[0])
+	profileName := args[0]
 	if err := validateProfileName(profileName); err != nil {
 		return err
 	}

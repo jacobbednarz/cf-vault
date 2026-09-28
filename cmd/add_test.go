@@ -111,6 +111,38 @@ func TestIntegration_Add_MissingProfileArg(t *testing.T) {
 	}
 }
 
+func TestIntegration_Add_RejectsUnusableArgs(t *testing.T) {
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		// A stray argument usually means a mistyped flag or an unquoted
+		// name, so saving a profile anyway would hide the mistake.
+		"extra arguments": {[]string{"add", "example", "extra"}, "accepts 1 arg(s)"},
+		// `exec` looks names up verbatim, so `add` must not quietly save
+		// one that differs from what was typed.
+		"surrounding whitespace": {[]string{"add", " example "}, "is invalid"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			configDir, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			result := runCfVault(t, append(envVars, envAuthValue+"="+testAPIToken), tt.args...)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			if !strings.Contains(result.Stderr, tt.want) {
+				t.Errorf("expected error containing %q, got stderr=%q", tt.want, result.Stderr)
+			}
+			if _, err := os.Stat(filepath.Join(configDir, configFileName)); !os.IsNotExist(err) {
+				t.Errorf("expected no config to be written, stat err = %v", err)
+			}
+		})
+	}
+}
+
 func TestFilterReadGroups_KeepsReadGroups(t *testing.T) {
 	groups := []permissionGroup{
 		{ID: "1", Name: "DNS Read"},
