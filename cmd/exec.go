@@ -90,6 +90,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 		if _, ok := os.LookupEnv(name); ok {
 			preexisting = append(preexisting, name)
 		}
+		// Only the profile's own credentials may reach the command; one left
+		// over from the calling shell would sit alongside them and may win.
+		env.Unset(name)
 	}
 	if len(preexisting) > 0 {
 		log.Warnf(msgFmtPreexistingCredentials, strings.Join(preexisting, ", "))

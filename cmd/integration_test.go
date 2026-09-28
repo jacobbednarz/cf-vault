@@ -473,6 +473,11 @@ func TestIntegration_Exec_WarnsOnPreexistingCredentials(t *testing.T) {
 	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN=abcdefghijklmnopqrstuvwxyzABCDEF12345678") {
 		t.Errorf("expected profile CLOUDFLARE_API_TOKEN to override stale value, got:\n%s", result.Stdout)
 	}
+	// Credentials the profile doesn't use must not reach the child either,
+	// or it sees a stale API key alongside the profile's token.
+	if strings.Contains(result.Stdout, "CF_API_KEY=") {
+		t.Errorf("expected stale CF_API_KEY to be removed, got:\n%s", result.Stdout)
+	}
 }
 
 func TestIntegration_Exec_NoWarningWithoutPreexistingCredentials(t *testing.T) {
