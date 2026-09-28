@@ -132,8 +132,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return errEmailRequiredForAPIKey
 	}
 
-	os.MkdirAll(configDir, 0700)
-
 	newProfile := profile{
 		Email:           emailAddress,
 		AuthType:        authType,

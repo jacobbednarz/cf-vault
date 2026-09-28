@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/pelletier/go-toml"
@@ -82,12 +83,39 @@ func loadConfig(path string) (tomlConfig, error) {
 	return config, nil
 }
 
-// saveConfig encodes config to the file at path, replacing its contents.
+// saveConfig replaces the config file at path with config, readable only by
+// its owner. The new contents are written to a temporary file that is renamed
+// over the old one, so a failed or interrupted write leaves the previous
+// config intact instead of a truncated file.
 func saveConfig(path string, config tomlConfig) error {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
-	if err != nil {
-		return fmt.Errorf(errFmtOpenConfigFile, path, err)
+	// Rename replaces a symlink rather than writing through it, so resolve it
+	// first to keep a linked config, such as one kept in a dotfiles repo.
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
 	}
-	defer file.Close()
-	return toml.NewEncoder(file).Encode(config)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+
+	// CreateTemp creates the file with mode 0600.
+	tmp, err := os.CreateTemp(dir, "."+configFileName+".*")
+	if err != nil {
+		return err
+	}
+	// Cleans up after a failure; after the rename there is nothing to remove.
+	defer os.Remove(tmp.Name())
+
+	if err := toml.NewEncoder(tmp).Encode(config); err != nil {
+		tmp.Close()
+		return fmt.Errorf(errFmtEncodeConfigFile, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
