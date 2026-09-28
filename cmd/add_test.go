@@ -158,14 +158,17 @@ func TestFilterReadGroups_KeepsReadGroups(t *testing.T) {
 	}
 }
 
-func TestFilterReadGroups_MidNameRead(t *testing.T) {
-	// strings.Contains is used, so "Read" anywhere in the name matches.
+// Permission groups carry no read/write attribute, only a name, so the read
+// template keys off "Read" as a word wherever it appears, but not inside a
+// longer word that could name a group granting writes.
+func TestFilterReadGroups_ReadAsAWord(t *testing.T) {
 	groups := []permissionGroup{
-		{ID: "1", Name: "Magic Firewall Packet Captures - Read PCAPs API"},
+		{ID: "mid-name", Name: "Magic Firewall Packet Captures - Read PCAPs API"},
+		{ID: "inside-word", Name: "Load Balancer Readiness Write"},
 	}
 	got := filterReadGroups(groups)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 group for mid-name Read, got %d", len(got))
+	if len(got) != 1 || got[0].ID != "mid-name" {
+		t.Errorf("got %+v, want only the mid-name Read group", got)
 	}
 }
 

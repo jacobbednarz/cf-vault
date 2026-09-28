@@ -439,6 +439,10 @@ func filterAPITokensGroups(groups []permissionGroup) []permissionGroup {
 	return out
 }
 
+// isReadGroup reports whether a permission group only grants reads. The API
+// describes groups by name alone. Every published group with "Read" as a word
+// in its name is read-only; the few read-only groups named otherwise, such as
+// "Security Center Insights", are left out of the read-only template.
 func isReadGroup(g permissionGroup) bool {
-	return strings.Contains(g.Name, "Read")
+	return slices.Contains(strings.Fields(g.Name), "Read")
 }
