@@ -155,12 +155,13 @@ func runExec(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		now := time.Now().UTC().Truncate(time.Second)
-		tokenExpiry := now.Add(parsedSessionDuration.Truncate(time.Second))
+		// Without not_before the token is valid from the moment Cloudflare
+		// creates it; one taken from the local clock would not be valid yet
+		// whenever that clock runs ahead of Cloudflare's.
+		tokenExpiry := time.Now().UTC().Truncate(time.Second).Add(parsedSessionDuration.Truncate(time.Second))
 
 		shortLivedToken, err := cfClient.User.Tokens.New(context.Background(), user.TokenNewParams{
 			Name:      cloudflare.F(fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix())),
-			NotBefore: cloudflare.F(now),
 			ExpiresOn: cloudflare.F(tokenExpiry),
 			Policies:  cloudflare.F(tokenPolicies),
 		})

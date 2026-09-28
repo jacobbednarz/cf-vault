@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/99designs/keyring"
 )
@@ -729,6 +730,7 @@ func TestIntegration_Exec_ShortLivedToken(t *testing.T) {
 	const shortLived = "cfut_" + testAPIToken + "0a1b2c3d"
 	envVars, created := setupShortLivedProfile(t, shortLived)
 
+	before := time.Now()
 	result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
 
 	if result.ExitCode != 0 {
@@ -737,8 +739,21 @@ func TestIntegration_Exec_ShortLivedToken(t *testing.T) {
 	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN="+shortLived+"\n") {
 		t.Errorf("expected the short lived token in the environment, got:\n%s", result.Stdout)
 	}
-	if got := (<-created).header.Get("Authorization"); got != "Bearer "+testAPIToken {
+	request := <-created
+	if got := request.header.Get("Authorization"); got != "Bearer "+testAPIToken {
 		t.Errorf("token created with Authorization %q, want the profile's token", got)
+	}
+	// A not_before taken from the local clock makes the token unusable until
+	// Cloudflare's clock catches up, whenever the local one runs ahead.
+	if nb, ok := request.body["not_before"]; ok {
+		t.Errorf("token created with not_before %v, want it left to Cloudflare", nb)
+	}
+	expiresOn, err := time.Parse(time.RFC3339, fmt.Sprint(request.body["expires_on"]))
+	if err != nil {
+		t.Fatalf("expires_on %v: %v", request.body["expires_on"], err)
+	}
+	if want := before.Add(15 * time.Minute); expiresOn.Before(want.Add(-2*time.Second)) || expiresOn.After(want.Add(time.Minute)) {
+		t.Errorf("expires_on = %s, want about 15 minutes from %s", expiresOn, before)
 	}
 }
 
