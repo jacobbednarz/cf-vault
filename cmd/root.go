@@ -7,7 +7,7 @@ import (
 	"github.com/99designs/keyring"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 var (
@@ -45,7 +45,7 @@ func fileKeyringPassphrasePrompt(prompt string) (string, error) {
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: ", prompt)
-	b, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		return "", err
 	}
