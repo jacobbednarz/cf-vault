@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,11 @@ func runCfVault(t *testing.T, extraEnv []string, args ...string) cfVaultResult {
 	return runCfVaultWithStdin(t, extraEnv, nil, args...)
 }
 
+// integrationRunTimeout bounds a single run of the binary. Every run finishes
+// in well under a second, so one that doesn't has hung, for example reading
+// an endless stdin, and should fail the test rather than stall the suite.
+const integrationRunTimeout = 15 * time.Second
+
 // runCfVaultWithStdin is runCfVault with stdin connected to the given reader.
 // A nil reader leaves stdin attached to the null device.
 func runCfVaultWithStdin(t *testing.T, extraEnv []string, stdin io.Reader, args ...string) cfVaultResult {
@@ -82,15 +88,23 @@ func runCfVaultWithStdin(t *testing.T, extraEnv []string, stdin io.Reader, args 
 	env.Set(envKeyringBackend, string(keyring.FileBackend))
 	env.Set(envFilePassphrase, "test-passphrase")
 
-	cmd := exec.Command(binaryPath, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), integrationRunTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
 	cmd.Env = append(env, extraEnv...)
 	cmd.Stdin = stdin
+	// Once the process is killed, don't wait on a stdin copy that is still
+	// feeding it, such as from an endless reader.
+	cmd.WaitDelay = time.Second
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		t.Fatalf("cf-vault %s did not finish within %s\nstderr: %s", strings.Join(args, " "), integrationRunTimeout, stderr.String())
+	}
 	exitCode := 0
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
