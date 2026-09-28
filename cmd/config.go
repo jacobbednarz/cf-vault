@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/pelletier/go-toml"
 )
@@ -17,6 +18,19 @@ type profile struct {
 	SessionDuration string   `toml:"session_duration,omitempty"`
 	SecretBackend   string   `toml:"secret_backend,omitempty"`
 	Policies        []policy `toml:"policies,omitempty"`
+}
+
+// validate reports mistakes in a profile's configuration, so they surface
+// before its secret is unlocked or the Cloudflare API is called.
+func (p profile) validate() error {
+	if p.SessionDuration == "" {
+		return nil
+	}
+	if _, err := time.ParseDuration(p.SessionDuration); err != nil {
+		return fmt.Errorf(errFmtInvalidSessionDuration, err)
+	}
+	_, err := p.tokenPolicies()
+	return err
 }
 
 type policy struct {

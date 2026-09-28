@@ -112,6 +112,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if !ok {
 		return fmt.Errorf(errFmtProfileNotFound, profileName, configPath)
 	}
+	if err := profile.validate(); err != nil {
+		return fmt.Errorf(errFmtInvalidProfile, profileName, configPath, err)
+	}
 
 	store, err := openSecretStore(configDir, profileName, profile)
 	if err != nil {
@@ -135,23 +138,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 	} else {
 		cfClient := newClient(string(secret), profile.AuthType, profile.Email)
 
-		tokenPolicies := []shared.TokenPolicyParam{}
-		for _, p := range profile.Policies {
-			var groups []shared.TokenPolicyPermissionGroupParam
-			for _, g := range p.PermissionGroups {
-				groups = append(groups, shared.TokenPolicyPermissionGroupParam{
-					ID: cloudflare.F(g.ID),
-				})
-			}
-			resources, err := tokenPolicyResources(p.Resources)
-			if err != nil {
-				return err
-			}
-			tokenPolicies = append(tokenPolicies, shared.TokenPolicyParam{
-				Effect:           cloudflare.F(shared.TokenPolicyEffect(p.Effect)),
-				PermissionGroups: cloudflare.F(groups),
-				Resources:        cloudflare.F(resources),
-			})
+		tokenPolicies, err := profile.tokenPolicies()
+		if err != nil {
+			return err
 		}
 
 		parsedSessionDuration, err := time.ParseDuration(profile.SessionDuration)
@@ -197,6 +186,30 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	syscall.Exec(pathtoExec, command, env)
 	return nil
+}
+
+// tokenPolicies converts the profile's policies into the SDK's token policy
+// parameters.
+func (p profile) tokenPolicies() ([]shared.TokenPolicyParam, error) {
+	policies := make([]shared.TokenPolicyParam, 0, len(p.Policies))
+	for _, pol := range p.Policies {
+		groups := make([]shared.TokenPolicyPermissionGroupParam, 0, len(pol.PermissionGroups))
+		for _, g := range pol.PermissionGroups {
+			groups = append(groups, shared.TokenPolicyPermissionGroupParam{
+				ID: cloudflare.F(g.ID),
+			})
+		}
+		resources, err := tokenPolicyResources(pol.Resources)
+		if err != nil {
+			return nil, err
+		}
+		policies = append(policies, shared.TokenPolicyParam{
+			Effect:           cloudflare.F(shared.TokenPolicyEffect(pol.Effect)),
+			PermissionGroups: cloudflare.F(groups),
+			Resources:        cloudflare.F(resources),
+		})
+	}
+	return policies, nil
 }
 
 // tokenPolicyResources converts resources decoded from the config file into
