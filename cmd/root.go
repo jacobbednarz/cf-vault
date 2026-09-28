@@ -7,7 +7,7 @@ import (
 	"github.com/99designs/keyring"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 var (
@@ -30,17 +30,14 @@ var keyringDefaults = keyring.Config{
 var rootCmd = &cobra.Command{
 	Use:  projectName,
 	Long: "Manage your Cloudflare credentials, securely",
-	PreRun: func(cmd *cobra.Command, args []string) {
+	// Errors are reported on their own; the full usage text buries them.
+	SilenceUsage: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			log.SetLevel(log.DebugLevel)
-		}
-
-		if len(args) == 0 {
-			cmd.Help()
-			os.Exit(0)
+			keyring.Debug = true
 		}
 	},
-	Run: func(cmd *cobra.Command, args []string) {},
 }
 
 // Get passphrase prompt (copied from https://github.com/99designs/aws-vault)
@@ -50,7 +47,7 @@ func fileKeyringPassphrasePrompt(prompt string) (string, error) {
 	}
 
 	fmt.Fprintf(os.Stderr, "%s: ", prompt)
-	b, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		return "", err
 	}
@@ -76,13 +73,17 @@ func init() {
 	addCmd.RegisterFlagCompletionFunc(flagProfileTemplate, cobra.FixedCompletions(policyTemplates, cobra.ShellCompDirectiveNoFileComp))
 	addCmd.Flags().StringSliceVarP(&accountIDs, flagAccountID, "", nil, "restrict the --profile-template policies to these account IDs (repeatable)")
 	addCmd.Flags().StringSliceVarP(&zoneIDs, flagZoneID, "", nil, "restrict the --profile-template policies to these zone IDs (repeatable)")
-	addCmd.Flags().StringVarP(&sessionDuration, flagSessionDuration, "", "", "TTL of short lived tokens requests")
+	addCmd.Flags().StringVarP(&sessionDuration, flagSessionDuration, "", "", "lifetime of the short lived tokens created by exec, such as 15m or 1h; at least "+minSessionDuration.String()+" and rounded down to whole seconds")
+	addCmd.MarkFlagsRequiredTogether(flagProfileTemplate, flagSessionDuration)
 	addCmd.Flags().BoolVarP(&secureEnclave, flagSecureEnclave, "", false, "store the credential encrypted with age to a Secure Enclave key (requires `age` and `age-plugin-se`); unlocks via Touch ID instead of the keychain password")
 	addCmd.Flags().BoolVarP(&yubikey, flagYubikey, "", false, "store the credential encrypted with age to a YubiKey PIV identity (requires `age` and `age-plugin-yubikey`); unlocks via a hardware touch instead of the keychain password")
 	addCmd.MarkFlagsMutuallyExclusive(flagSecureEnclave, flagYubikey)
 	addCmd.Flags().StringVarP(&emailAddress, flagEmail, "", "", "email address of the account; required for global API keys")
 	addCmd.Flags().BoolVarP(&authValueFromStdin, flagAuthValueStdin, "", false, "read the authentication value (API key or API token) from stdin instead of prompting; alternatively set "+envAuthValue)
 	addCmd.Flags().BoolVarP(&force, flagForce, "", false, "overwrite the profile if it already exists")
+
+	// Everything after the profile name is the command to run, flags included.
+	execCmd.Flags().SetInterspersed(false)
 
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)

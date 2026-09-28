@@ -4,51 +4,60 @@ import "errors"
 
 // Sentinel errors for failures that carry no dynamic context.
 var (
-	errProfileArgRequired       = errors.New("requires a profile argument")
-	errProfileNameEmpty         = errors.New("profile name must not be empty")
-	errInvalidAuthValueFormat   = errors.New("invalid API token or API key format")
-	errNestedSession            = errors.New("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
-	errAgeNotFound              = errors.New("age not found on PATH; install it (`brew install age`)")
-	errYubikeyIdentityNotFound  = errors.New("no YubiKey identity found; run `age-plugin-yubikey --generate` to enroll one, then re-run this command")
-	errYubikeyRecipientNotFound = errors.New("could not extract age1yubikey1… recipient from `age-plugin-yubikey --identity` output")
-	errResourceIDsNeedTemplate  = errors.New("--" + flagAccountID + " and --" + flagZoneID + " can only be used with --" + flagProfileTemplate)
-	errEmailRequiredForAPIKey   = errors.New("--" + flagEmail + " is required when adding a global API key")
-	errAuthValueSourceRequired  = errors.New("stdin is not a terminal; pass --" + flagAuthValueStdin + " or set " + envAuthValue + " to provide the authentication value")
+	errProfileArgRequired           = errors.New("requires a profile argument")
+	errProfileNameEmpty             = errors.New("profile name must not be empty")
+	errInvalidAuthValueFormat       = errors.New("invalid API token or API key format")
+	errNestedSession                = errors.New("cf-vault sessions shouldn't be nested, unset CLOUDFLARE_VAULT_SESSION to continue or open a new shell session")
+	errAgeNotFound                  = errors.New("age not found on PATH; install it (`brew install age`)")
+	errYubikeyIdentityNotFound      = errors.New("no YubiKey identity found; run `age-plugin-yubikey --generate` to enroll one, then re-run this command")
+	errYubikeyRecipientNotFound     = errors.New("could not extract age1yubikey1… recipient from `age-plugin-yubikey --identity` output")
+	errResourceIDsNeedTemplate      = errors.New("--" + flagAccountID + " and --" + flagZoneID + " can only be used with --" + flagProfileTemplate)
+	errEmailRequiredForAPIKey       = errors.New("--" + flagEmail + " is required when adding a global API key")
+	errAuthValueSourceRequired      = errors.New("stdin is not a terminal; pass --" + flagAuthValueStdin + " or set " + envAuthValue + " to provide the authentication value")
+	errAuthValueTooLong             = errors.New("the authentication value read from stdin is too long to be an API token or API key")
+	errAuthValueStdinIsTerminal     = errors.New("--" + flagAuthValueStdin + " reads a piped value, but stdin is a terminal; pipe the value in, or leave the flag off to be prompted for it")
+	errShellNotSet                  = errors.New("SHELL is not set, so there is no shell to start; pass the command to run after `--` instead")
+	errEmptyShortLivedToken         = errors.New("the short lived token was created but Cloudflare returned no value for it")
+	errNoPoliciesForSessionDuration = errors.New("session_duration is set but the profile has no policies to create a short lived token with; add policies or remove session_duration")
 )
 
-// Error message strings. Most are format strings that interpolate context or
-// wrap a cause.
+// Error format strings for failures that interpolate context or wrap a cause.
 const (
-	// errMsgUserFetchForPolicy is logged rather than returned; it is a full
-	// sentence aimed at the user, so it doesn't follow Go's error string style.
-	errMsgUserFetchForPolicy = "failed to fetch user ID from the Cloudflare API which is required to generate the predefined short lived token policies. If you are using API tokens, please allow the permission to access your user details and try again."
-
 	// Profiles and configuration.
-	errFmtInvalidProfileName    = "profile name %q is invalid; use only letters, digits, `.`, `_`, `-`, and do not start with `.`"
-	errFmtProfileNotFound       = "no profile matching %q found in the configuration file at %s"
-	errFmtProfileExists         = "profile %q already exists in %s; pass --" + flagForce + " to overwrite it"
-	errFmtParseConfigFile       = "failed to parse the configuration file at %s: %s"
-	errFmtUnknownSecretBackend  = "profile %q has unknown secret_backend %q; valid values are %q, %q, or unset for keychain"
-	errFmtHomeDirNotFound       = "unable to find home directory: %w"
-	errFmtOpenConfigFile        = "failed to open file at %s"
-	errFmtReadAuthValue         = "unable to read authentication value: %s"
-	errFmtDetectAuthType        = "failed to detect authentication type: %s"
-	errFmtExecutableNotFound    = "couldn't find the executable '%s': %s"
-	errFmtCreateAPIToken        = "failed to create API token: %s"
-	errFmtFetchPermissionGroups = "failed to fetch permission groups: %w"
-	errFmtUnknownPolicyTemplate = "unable to generate policy for %q, valid policy names: [" + policyTemplateReadOnly + ", " + policyTemplateWriteEverything + "]"
-	errFmtEmptyPolicyBucket     = "one or more policy buckets is empty for policy type %q (account=%d, zone=%d, user=%d); check API permissions"
-	errFmtInvalidResourceID     = "%s ID %q is invalid; expected a 32 character hexadecimal string"
-	errFmtUnsupportedResources  = "policy resources must be either all strings or all tables of strings, got %v"
+	errFmtInvalidProfileName         = "profile name %q is invalid; use only letters, digits, `.`, `_`, `-`, and do not start with `.`"
+	errFmtProfileNotFound            = "no profile matching %q found in the configuration file at %s"
+	errFmtInvalidProfile             = "profile %q in %s is invalid: %w"
+	errFmtProfileExists              = "profile %q already exists in %s; pass --" + flagForce + " to overwrite it"
+	errFmtParseConfigFile            = "failed to parse the configuration file at %s: %w"
+	errFmtEncodeConfigFile           = "failed to encode the configuration file: %w"
+	errFmtInvalidSessionDuration     = "invalid session_duration: %w"
+	errFmtInvalidSessionDurationFlag = "invalid --" + flagSessionDuration + ": %w"
+	errFmtSessionDurationTooShort    = "%q is shorter than the minimum of %s"
+	errFmtUnknownSecretBackend       = "profile %q has unknown secret_backend %q; valid values are %q, %q, or unset for keychain"
+	errFmtUnknownAuthType            = "unknown auth_type %q; valid values are %q and %q"
+	errFmtHomeDirNotFound            = "unable to find home directory: %w"
+	errFmtReadAuthValue              = "unable to read authentication value: %w"
+	errFmtDetectAuthType             = "failed to detect authentication type: %w"
+	errFmtExecutableNotFound         = "couldn't find the executable '%s': %w"
+	errFmtRunExecutable              = "failed to run %s: %w"
+	errFmtCreateAPIToken             = "failed to create API token: %w"
+	errFmtUserFetchForPolicy         = "failed to fetch the user ID the predefined token policies are scoped to; API tokens need permission to read user details: %w"
+	errFmtFetchPermissionGroups      = "failed to fetch permission groups: %w"
+	errFmtUnknownPolicyTemplate      = "unable to generate policy for %q, valid policy names: [" + policyTemplateReadOnly + ", " + policyTemplateWriteEverything + "]"
+	errFmtEmptyPolicyBucket          = "one or more policy buckets is empty for policy type %q (account=%d, zone=%d, user=%d); check API permissions"
+	errFmtInvalidResourceID          = "%s ID %q is invalid; expected a 32 character hexadecimal string"
+	errFmtUnsupportedResources       = "policy resources must be either all strings or all tables of strings, got %v"
+	errFmtInvalidPolicyEffect        = "policy effect %q is invalid; expected %q or %q"
 
 	// Keyring backend.
-	errFmtOpenKeyring    = "failed to open keyring backend: %s"
-	errFmtGetKeyringItem = "failed to get item from keyring: %s"
-	errFmtAddKeyringItem = "Error adding credentials to keyring: %s"
+	errFmtOpenKeyring               = "failed to open keyring backend: %w"
+	errFmtGetKeyringItem            = "failed to get item from keyring: %w"
+	errFmtAddKeyringItem            = "failed to add credentials to keyring: %w"
+	errFmtRemoveKeyringItem         = "failed to remove item from keyring: %w"
+	errFmtUnavailableKeyringBackend = "%s=%q is not a keyring backend available on this system; available backends: %v"
 
 	// age and its plugins.
-	errFmtUnknownAgeBackend        = "unknown age backend %q"
-	errFmtDecryptAgeBackend        = "failed to decrypt secret (%s): %s"
+	errFmtDecryptAgeBackend        = "failed to decrypt secret (%s): %w"
 	errFmtAgePluginSENotFound      = "age-plugin-se not found on PATH; install it (`brew install age-plugin-se`) or place an existing identity file at %s"
 	errFmtAgePluginSEKeygen        = "age-plugin-se keygen failed: %w"
 	errFmtAgePluginYubikeyNotFound = "age-plugin-yubikey not found on PATH; install it (`brew install age-plugin-yubikey`) and either run `age-plugin-yubikey --generate` to enroll a new key, or place an existing identity file at %s"

@@ -7,10 +7,23 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
 )
 
+// isolateHome points the home directory at an empty temporary one, so the
+// path helpers never see the developer's own `~/.cf-vault`.
+func isolateHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	homedir.Reset()
+	t.Cleanup(homedir.Reset)
+	return home
+}
+
 func TestResolveConfigDir_Legacy(t *testing.T) {
+	isolateHome(t)
 	orig := os.Getenv("XDG_CONFIG_HOME")
 	os.Unsetenv("XDG_CONFIG_HOME")
 	defer os.Setenv("XDG_CONFIG_HOME", orig)
@@ -24,6 +37,7 @@ func TestResolveConfigDir_Legacy(t *testing.T) {
 }
 
 func TestResolveConfigDir_XDG(t *testing.T) {
+	isolateHome(t)
 	os.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
 	defer os.Unsetenv("XDG_CONFIG_HOME")
 	dir, err := resolveConfigDir()
@@ -87,6 +101,7 @@ func TestResolveConfigDir_XDG_WarnIfLegacyExists(t *testing.T) {
 }
 
 func TestResolveKeyringDir_Legacy(t *testing.T) {
+	isolateHome(t)
 	orig := os.Getenv("XDG_DATA_HOME")
 	os.Unsetenv("XDG_DATA_HOME")
 	defer os.Setenv("XDG_DATA_HOME", orig)
@@ -100,6 +115,7 @@ func TestResolveKeyringDir_Legacy(t *testing.T) {
 }
 
 func TestResolveKeyringDir_XDG(t *testing.T) {
+	isolateHome(t)
 	os.Setenv("XDG_DATA_HOME", "/tmp/xdg-data")
 	defer os.Unsetenv("XDG_DATA_HOME")
 	dir, err := resolveKeyringDir()
@@ -109,5 +125,22 @@ func TestResolveKeyringDir_XDG(t *testing.T) {
 	want := filepath.Join("/tmp/xdg-data", "cf-vault", "keys")
 	if dir != want {
 		t.Errorf("expected %s, got %s", want, dir)
+	}
+}
+
+// A misspelt CF_VAULT_BACKEND should say what was asked for and what could
+// have been, not just that some backend isn't available.
+func TestOpenKeyring_UnavailableBackend(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv(envKeyringBackend, "keychian")
+
+	_, err := openKeyring()
+	if err == nil {
+		t.Fatal("expected an error for an unavailable backend")
+	}
+	for _, want := range []string{`"keychian"`, string(keyring.FileBackend)} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s", err, want)
+		}
 	}
 }

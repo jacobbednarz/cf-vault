@@ -7,11 +7,20 @@ import (
 
 // newClient constructs a cloudflare-go/v6 client from the stored auth credentials.
 func newClient(authValue, authType, email string) *cloudflare.Client {
-	if authType == authTypeAPIToken {
-		return cloudflare.NewClient(option.WithAPIToken(authValue))
+	// The SDK also authenticates with any credentials exported as CLOUDFLARE_*
+	// variables. Clear them so a stale one in the calling shell isn't sent
+	// alongside, or instead of, the profile's.
+	opts := []option.RequestOption{
+		option.WithHeaderDel("Authorization"),
+		option.WithHeaderDel("X-Auth-Key"),
+		option.WithHeaderDel("X-Auth-Email"),
+		option.WithHeaderDel("X-Auth-User-Service-Key"),
 	}
-	return cloudflare.NewClient(
+	if authType == authTypeAPIToken {
+		return cloudflare.NewClient(append(opts, option.WithAPIToken(authValue))...)
+	}
+	return cloudflare.NewClient(append(opts,
 		option.WithAPIKey(authValue),
 		option.WithAPIEmail(email),
-	)
+	)...)
 }

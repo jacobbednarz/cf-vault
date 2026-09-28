@@ -2,14 +2,20 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/99designs/keyring"
 )
@@ -67,6 +73,14 @@ func runCfVaultWithStdin(t *testing.T, extraEnv []string, stdin io.Reader, args 
 		env.Unset(name)
 	}
 	env.Unset(envAuthValue)
+	// Point every location cf-vault could fall back to at throwaway storage,
+	// so no test reads or writes the developer's own config, keys or
+	// keychain. extraEnv, such as from setupTestEnv, overrides these.
+	env.Unset(envXDGConfigHome)
+	env.Unset(envXDGDataHome)
+	env.Set("HOME", t.TempDir())
+	env.Set(envKeyringBackend, string(keyring.FileBackend))
+	env.Set(envFilePassphrase, "test-passphrase")
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Env = append(env, extraEnv...)
@@ -255,6 +269,67 @@ func TestIntegration_List_MultipleProfiles(t *testing.T) {
 	}
 }
 
+func TestIntegration_List_SortedByName(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	names := []string{"delta", "alpha", "echo", "charlie", "bravo"}
+	var config strings.Builder
+	for _, name := range names {
+		fmt.Fprintf(&config, "[profiles.%s]\nauth_type = \"api_token\"\n", name)
+	}
+	writeConfig(t, configDir, config.String())
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	var listed []string
+	for _, line := range strings.Split(result.Stdout, "\n")[1:] {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			listed = append(listed, fields[0])
+		}
+	}
+	if want := []string{"alpha", "bravo", "charlie", "delta", "echo"}; !slices.Equal(listed, want) {
+		t.Errorf("listed profiles %v, want %v", listed, want)
+	}
+}
+
+// The binary under test must never see the developer's home directory: a
+// `~/.cf-vault` there adds a warning to every run, and a test that falls back
+// to the legacy paths would read or rewrite a real config.
+func TestIntegration_IsolatedFromDevelopersHome(t *testing.T) {
+	developerHome := t.TempDir()
+	if err := os.Mkdir(filepath.Join(developerHome, ".cf-vault"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", developerHome)
+
+	for name, envVars := range map[string][]string{"no extra env": nil, "setupTestEnv": setupTokenProfile(t)} {
+		t.Run(name, func(t *testing.T) {
+			result := runCfVault(t, envVars, "list")
+			if output := result.Stdout + result.Stderr; strings.Contains(output, developerHome) {
+				t.Errorf("cf-vault used the developer's home directory, output=%q", output)
+			}
+		})
+	}
+}
+
+func TestIntegration_List_NoConfigFile(t *testing.T) {
+	_, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0 before any profile is added, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "no profiles found") {
+		t.Errorf("expected 'no profiles found' in output, got: %q", result.Stdout)
+	}
+}
+
 func TestIntegration_Exec_MissingProfileArg(t *testing.T) {
 	result := runCfVault(t, nil, "exec")
 
@@ -286,6 +361,29 @@ func TestIntegration_Exec_ProfileNotFound(t *testing.T) {
 	}
 	if !strings.Contains(result.Stderr, "nonexistent-profile") {
 		t.Errorf("expected profile name in error output, got stderr=%q", result.Stderr)
+	}
+}
+
+// Left unchecked, an unrecognised auth_type is exported as
+// CLOUDFLARE_<AUTH_TYPE> and sent to the API as a global API key.
+func TestIntegration_Exec_UnknownAuthType(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.typo]
+    auth_type = "api_tokens"
+`)
+	writeKeyringItem(t, keyringDir, "typo-api_tokens", []byte(testAPIToken))
+
+	result := runCfVault(t, envVars, "exec", "typo", "--", "env")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+	}
+	if !strings.Contains(result.Stderr, `"api_tokens"`) {
+		t.Errorf("expected error naming the auth type, got stderr=%q", result.Stderr)
 	}
 }
 
@@ -473,6 +571,11 @@ func TestIntegration_Exec_WarnsOnPreexistingCredentials(t *testing.T) {
 	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN=abcdefghijklmnopqrstuvwxyzABCDEF12345678") {
 		t.Errorf("expected profile CLOUDFLARE_API_TOKEN to override stale value, got:\n%s", result.Stdout)
 	}
+	// Credentials the profile doesn't use must not reach the child either,
+	// or it sees a stale API key alongside the profile's token.
+	if strings.Contains(result.Stdout, "CF_API_KEY=") {
+		t.Errorf("expected stale CF_API_KEY to be removed, got:\n%s", result.Stdout)
+	}
 }
 
 func TestIntegration_Exec_NoWarningWithoutPreexistingCredentials(t *testing.T) {
@@ -493,5 +596,274 @@ func TestIntegration_Exec_NoWarningWithoutPreexistingCredentials(t *testing.T) {
 	}
 	if strings.Contains(result.Stderr, "already set in the calling shell") {
 		t.Errorf("expected no warning, got: %q", result.Stderr)
+	}
+}
+
+// setupTokenProfile returns the env for an isolated test install holding a
+// single long lived API token profile named "tokenprofile".
+func setupTokenProfile(t *testing.T) []string {
+	t.Helper()
+
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	t.Cleanup(cleanup)
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.tokenprofile]
+    auth_type = "api_token"
+`)
+	writeKeyringItem(t, keyringDir, "tokenprofile-api_token", []byte(testAPIToken))
+	return envVars
+}
+
+func TestIntegration_Exec_NoCommandWithoutShell(t *testing.T) {
+	for name, shell := range map[string]string{
+		"unset":   "",
+		"missing": filepath.Join(t.TempDir(), "no-such-shell"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			result := runCfVault(t, append(setupTokenProfile(t), "SHELL="+shell), "exec", "tokenprofile")
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+			}
+			if strings.Contains(result.Stderr, "panic") {
+				t.Fatalf("expected an error rather than a panic, got stderr=%q", result.Stderr)
+			}
+			if shell == "" && !strings.Contains(result.Stderr, "SHELL") {
+				t.Errorf("expected error naming SHELL, got stderr=%q", result.Stderr)
+			}
+			if shell != "" && !strings.Contains(result.Stderr, shell) {
+				t.Errorf("expected error naming %s, got stderr=%q", shell, result.Stderr)
+			}
+		})
+	}
+}
+
+func TestIntegration_Exec_CommandThatCannotStart(t *testing.T) {
+	// Executable, so it passes the PATH lookup, but not a valid binary or
+	// script, so replacing the process with it fails.
+	notABinary := filepath.Join(t.TempDir(), "not-a-binary")
+	if err := os.WriteFile(notABinary, []byte{0x00, 0x01, 0x02}, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	result := runCfVault(t, setupTokenProfile(t), "exec", "tokenprofile", "--", notABinary)
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit when the command cannot start, got 0\nstderr: %s", result.Stderr)
+	}
+	if !strings.Contains(result.Stderr, notABinary) {
+		t.Errorf("expected error naming the command, got stderr=%q", result.Stderr)
+	}
+}
+
+func TestIntegration_Exec_ExecutableNotFound(t *testing.T) {
+	result := runCfVault(t, setupTokenProfile(t), "exec", "tokenprofile", "--", "cf-vault-no-such-command")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0")
+	}
+	if !strings.Contains(result.Stderr, "'cf-vault-no-such-command'") {
+		t.Errorf("expected error naming the missing executable, got stderr=%q", result.Stderr)
+	}
+}
+
+// Everything after the profile name belongs to the command, whether or not it
+// is separated by `--`, and flags for cf-vault itself go before the profile.
+func TestIntegration_Exec_CommandArguments(t *testing.T) {
+	tests := map[string][]string{
+		"after --":                 {"exec", "tokenprofile", "--", "sh", "-c", "echo ran"},
+		"without --":               {"exec", "tokenprofile", "sh", "-c", "echo ran"},
+		"cf-vault flag first":      {"exec", "-v", "tokenprofile", "--", "sh", "-c", "echo ran"},
+		"command flag like -v too": {"exec", "tokenprofile", "sh", "-c", "echo ran", "-v"},
+	}
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := runCfVault(t, setupTokenProfile(t), args...)
+
+			if result.ExitCode != 0 {
+				t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+			}
+			if result.Stdout != "ran\n" {
+				t.Errorf("stdout = %q, want the command's output", result.Stdout)
+			}
+		})
+	}
+}
+
+// tokenCreation is a POST /user/tokens request received by the mock API.
+type tokenCreation struct {
+	header http.Header
+	body   map[string]interface{}
+}
+
+// setupShortLivedProfile returns the env for an isolated test install holding
+// a short lived token profile named "shortlived", with the Cloudflare API
+// replaced by a mock that answers token creation with tokenValue. Requests
+// the mock receives are sent on the returned channel.
+func setupShortLivedProfile(t *testing.T, tokenValue string) ([]string, <-chan tokenCreation) {
+	t.Helper()
+
+	created := make(chan tokenCreation, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/user/tokens" {
+			http.NotFound(w, r)
+			return
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		created <- tokenCreation{header: r.Header.Clone(), body: body}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":  true,
+			"errors":   []interface{}{},
+			"messages": []interface{}{},
+			"result":   map[string]interface{}{"id": "short-lived-id", "value": tokenValue},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	t.Cleanup(cleanup)
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.shortlived]
+    auth_type = "api_token"
+    session_duration = "15m"
+
+    [[profiles.shortlived.policies]]
+      effect = "allow"
+
+      [[profiles.shortlived.policies.permission_groups]]
+        id = "c8fed203ed3043cba015a93ad1616f1f"
+        name = "Zone Read"
+
+      [profiles.shortlived.policies.resources]
+        "com.cloudflare.api.account.zone.*" = "*"
+`)
+	writeKeyringItem(t, keyringDir, "shortlived-api_token", []byte(testAPIToken))
+	return append(envVars, "CLOUDFLARE_BASE_URL="+srv.URL), created
+}
+
+func TestIntegration_Exec_ShortLivedToken(t *testing.T) {
+	const shortLived = "cfut_" + testAPIToken + "0a1b2c3d"
+	envVars, created := setupShortLivedProfile(t, shortLived)
+
+	before := time.Now()
+	result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN="+shortLived+"\n") {
+		t.Errorf("expected the short lived token in the environment, got:\n%s", result.Stdout)
+	}
+	request := <-created
+	if got := request.header.Get("Authorization"); got != "Bearer "+testAPIToken {
+		t.Errorf("token created with Authorization %q, want the profile's token", got)
+	}
+	// A not_before taken from the local clock makes the token unusable until
+	// Cloudflare's clock catches up, whenever the local one runs ahead.
+	if nb, ok := request.body["not_before"]; ok {
+		t.Errorf("token created with not_before %v, want it left to Cloudflare", nb)
+	}
+	expiresOn, err := time.Parse(time.RFC3339, fmt.Sprint(request.body["expires_on"]))
+	if err != nil {
+		t.Fatalf("expires_on %v: %v", request.body["expires_on"], err)
+	}
+	if want := before.Add(15 * time.Minute); expiresOn.Before(want.Add(-2*time.Second)) || expiresOn.After(want.Add(time.Minute)) {
+		t.Errorf("expires_on = %s, want about 15 minutes from %s", expiresOn, before)
+	}
+	// The profile's policy must arrive whole: a token missing its permission
+	// groups or resources is either rejected or grants nothing.
+	wantPolicies := []interface{}{map[string]interface{}{
+		"effect":            "allow",
+		"permission_groups": []interface{}{map[string]interface{}{"id": "c8fed203ed3043cba015a93ad1616f1f"}},
+		"resources":         map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+	}}
+	if !reflect.DeepEqual(request.body["policies"], wantPolicies) {
+		t.Errorf("token created with policies %v, want %v", request.body["policies"], wantPolicies)
+	}
+}
+
+func TestIntegration_Exec_ShortLivedTokenWithoutValue(t *testing.T) {
+	envVars, _ := setupShortLivedProfile(t, "")
+
+	result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit when no token value is returned, got 0\nstdout: %s", result.Stdout)
+	}
+	if strings.Contains(result.Stdout, "CLOUDFLARE_VAULT_SESSION=") {
+		t.Errorf("expected the command not to run, got stdout:\n%s", result.Stdout)
+	}
+}
+
+func TestIntegration_Exec_UnusableShortLivedProfile(t *testing.T) {
+	tests := map[string]struct {
+		config string
+		want   string
+	}{
+		"no policies": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_token"
+  session_duration = "15m"
+`,
+			want: "no policies",
+		},
+		"zero session duration": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_token"
+  session_duration = "0s"
+
+  [[profiles.shortlived.policies]]
+    effect = "allow"
+    [[profiles.shortlived.policies.permission_groups]]
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    [profiles.shortlived.policies.resources]
+      "com.cloudflare.api.account.zone.*" = "*"
+`,
+			want: "session_duration",
+		},
+		"misspelt policy effect": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_token"
+  session_duration = "15m"
+
+  [[profiles.shortlived.policies]]
+    effect = "alow"
+    [[profiles.shortlived.policies.permission_groups]]
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    [profiles.shortlived.policies.resources]
+      "com.cloudflare.api.account.zone.*" = "*"
+`,
+			want: `"alow"`,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// No credential is stored, so failing on the config proves it was
+			// checked before the keyring was touched.
+			configDir, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+			writeConfig(t, configDir, tt.config)
+
+			result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+			}
+			if !strings.Contains(result.Stderr, tt.want) {
+				t.Errorf("expected error mentioning %q, got stderr=%q", tt.want, result.Stderr)
+			}
+		})
 	}
 }

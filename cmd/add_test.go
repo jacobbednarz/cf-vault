@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -111,6 +112,38 @@ func TestIntegration_Add_MissingProfileArg(t *testing.T) {
 	}
 }
 
+func TestIntegration_Add_RejectsUnusableArgs(t *testing.T) {
+	tests := map[string]struct {
+		args []string
+		want string
+	}{
+		// A stray argument usually means a mistyped flag or an unquoted
+		// name, so saving a profile anyway would hide the mistake.
+		"extra arguments": {[]string{"add", "example", "extra"}, "accepts 1 arg(s)"},
+		// `exec` looks names up verbatim, so `add` must not quietly save
+		// one that differs from what was typed.
+		"surrounding whitespace": {[]string{"add", " example "}, "is invalid"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			configDir, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			result := runCfVault(t, append(envVars, envAuthValue+"="+testAPIToken), tt.args...)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			if !strings.Contains(result.Stderr, tt.want) {
+				t.Errorf("expected error containing %q, got stderr=%q", tt.want, result.Stderr)
+			}
+			if _, err := os.Stat(filepath.Join(configDir, configFileName)); !os.IsNotExist(err) {
+				t.Errorf("expected no config to be written, stat err = %v", err)
+			}
+		})
+	}
+}
+
 func TestFilterReadGroups_KeepsReadGroups(t *testing.T) {
 	groups := []permissionGroup{
 		{ID: "1", Name: "DNS Read"},
@@ -125,14 +158,17 @@ func TestFilterReadGroups_KeepsReadGroups(t *testing.T) {
 	}
 }
 
-func TestFilterReadGroups_MidNameRead(t *testing.T) {
-	// strings.Contains is used, so "Read" anywhere in the name matches.
+// Permission groups carry no read/write attribute, only a name, so the read
+// template keys off "Read" as a word wherever it appears, but not inside a
+// longer word that could name a group granting writes.
+func TestFilterReadGroups_ReadAsAWord(t *testing.T) {
 	groups := []permissionGroup{
-		{ID: "1", Name: "Magic Firewall Packet Captures - Read PCAPs API"},
+		{ID: "mid-name", Name: "Magic Firewall Packet Captures - Read PCAPs API"},
+		{ID: "inside-word", Name: "Load Balancer Readiness Write"},
 	}
 	got := filterReadGroups(groups)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 group for mid-name Read, got %d", len(got))
+	if len(got) != 1 || got[0].ID != "mid-name" {
+		t.Errorf("got %+v, want only the mid-name Read group", got)
 	}
 }
 
@@ -282,14 +318,27 @@ func TestGeneratePolicy_WriteEverything(t *testing.T) {
 		}
 	}
 
-	// No bucket may carry an `API Tokens *` permission — Cloudflare rejects
-	// POST /user/tokens with 1001 when a sub-token would be granted permissions
-	// to manage other tokens, regardless of whether the perm lives in the User
-	// or Account scope.
+	// No bucket may carry permission to manage API tokens — Cloudflare
+	// rejects POST /user/tokens with 1001 when a sub-token would be able to
+	// manage other tokens, whether the permission lives in the User or
+	// Account scope. Reading tokens is delegable.
 	for _, p := range policies {
 		for _, g := range p.PermissionGroups {
-			if strings.Contains(g.Name, "API Tokens") {
+			if strings.Contains(g.Name, "API Tokens") && !strings.HasSuffix(g.Name, " Read") {
 				t.Errorf("policy for %v contains %q, which cannot be delegated to a sub-token", p.Resources, g.Name)
+			}
+		}
+	}
+
+	// Writing everything must not grant less than reading everything.
+	readOnly, err := generatePolicy(context.Background(), client, "read-only", "user-456", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i, p := range readOnly {
+		for _, g := range p.PermissionGroups {
+			if !slices.Contains(policies[i].PermissionGroups, g) {
+				t.Errorf("read-only grants %q in policy[%d], but write-everything does not", g.Name, i)
 			}
 		}
 	}
@@ -446,7 +495,7 @@ func TestIntegration_Add_ResourceIDsRequireTemplate(t *testing.T) {
 }
 
 func TestIntegration_Add_InvalidZoneID(t *testing.T) {
-	result := runCfVault(t, nil, "add", "example", "--profile-template", "read-only", "--zone-id", "*")
+	result := runCfVault(t, nil, "add", "example", "--profile-template", "read-only", "--session-duration", "15m", "--zone-id", "*")
 
 	if result.ExitCode == 0 {
 		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
@@ -599,6 +648,34 @@ func TestIntegration_Add_StdinTakesPrecedenceOverEnv(t *testing.T) {
 	}
 }
 
+// endlessReader never runs out, like `cf-vault add … < /dev/zero`.
+type endlessReader struct{}
+
+func (endlessReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'a'
+	}
+	return len(p), nil
+}
+
+func TestIntegration_Add_StdinReadIsBounded(t *testing.T) {
+	_, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Reading all of stdin before looking at it would never finish here.
+	result := runCfVaultWithStdin(t, envVars, endlessReader{}, "add", "example", "--"+flagAuthValueStdin)
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+	}
+	if !strings.Contains(result.Stderr, "too long") {
+		t.Errorf("expected an error about the value's length, got stderr=%q", result.Stderr)
+	}
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); ok {
+		t.Error("expected no credential to be stored")
+	}
+}
+
 func TestIntegration_Add_NoAuthValueSourceWithoutTerminal(t *testing.T) {
 	configDir, _, envVars, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -631,6 +708,7 @@ func TestIntegration_Add_ExistingProfileRequiresForce(t *testing.T) {
     email = "old@example.com"
     auth_type = "api_key"
 `)
+	writeKeyringItem(t, keyringDir, "example-"+authTypeAPIKey, []byte(testAPIKey))
 
 	result := runCfVaultWithStdin(t, envVars, strings.NewReader(testAPIToken), "add", "example", "--"+flagAuthValueStdin)
 
@@ -646,6 +724,9 @@ func TestIntegration_Add_ExistingProfileRequiresForce(t *testing.T) {
 	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); ok {
 		t.Error("expected no credential to be stored without --force")
 	}
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIKey); !ok {
+		t.Error("expected the existing credential to be kept without --force")
+	}
 
 	result = runCfVaultWithStdin(t, envVars, strings.NewReader(testAPIToken), "add", "example", "--"+flagAuthValueStdin, "--"+flagForce)
 
@@ -657,6 +738,11 @@ func TestIntegration_Add_ExistingProfileRequiresForce(t *testing.T) {
 	}
 	if stored, _ := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); string(stored) != testAPIToken {
 		t.Errorf("stored secret = %q, want %q", stored, testAPIToken)
+	}
+	// The replaced profile's credential lived under a different key, so it
+	// would be orphaned in the keyring if it weren't removed.
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIKey); ok {
+		t.Error("expected the replaced profile's credential to be removed")
 	}
 }
 
@@ -693,13 +779,61 @@ func TestIntegration_Add_UnknownTemplateRejectedBeforeCredentials(t *testing.T) 
 
 	// No credential source is given, so reaching the credential step would
 	// fail with a different error; the template error proves it ran first.
-	result := runCfVault(t, envVars, "add", "example", "--"+flagProfileTemplate, "read-everything")
+	result := runCfVault(t, envVars, "add", "example", "--"+flagProfileTemplate, "read-everything", "--"+flagSessionDuration, "15m")
 
 	if result.ExitCode == 0 {
 		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
 	}
 	if !strings.Contains(result.Stderr, "unable to generate policy for") || !strings.Contains(result.Stderr, "read-everything") {
 		t.Errorf("expected unknown template error, got stderr=%q", result.Stderr)
+	}
+}
+
+func TestIntegration_Add_InvalidSessionDurationRejectedBeforeCredentials(t *testing.T) {
+	for _, duration := range []string{"banana", "0s", "-5m", "9s"} {
+		t.Run(duration, func(t *testing.T) {
+			configDir, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			// As above, no credential source proves the check ran first.
+			result := runCfVault(t, envVars, "add", "example", "--"+flagProfileTemplate, policyTemplateReadOnly, "--"+flagSessionDuration, duration)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			if !strings.Contains(result.Stderr, "--"+flagSessionDuration) || !strings.Contains(result.Stderr, duration) {
+				t.Errorf("expected invalid session duration error, got stderr=%q", result.Stderr)
+			}
+			if _, err := os.Stat(filepath.Join(configDir, configFileName)); !os.IsNotExist(err) {
+				t.Errorf("expected no config to be written, stat err = %v", err)
+			}
+		})
+	}
+}
+
+// A template's policies are only ever used to create short lived tokens, and
+// a session duration without policies has nothing to create a token with.
+func TestIntegration_Add_TemplateAndSessionDurationRequireEachOther(t *testing.T) {
+	tests := map[string][]string{
+		"template alone":         {"--" + flagProfileTemplate, policyTemplateReadOnly},
+		"session duration alone": {"--" + flagSessionDuration, "15m"},
+	}
+	for name, flags := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			result := runCfVault(t, envVars, append([]string{"add", "example"}, flags...)...)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			for _, flag := range []string{flagProfileTemplate, flagSessionDuration} {
+				if !strings.Contains(result.Stderr, flag) {
+					t.Errorf("expected error naming %s, got stderr=%q", flag, result.Stderr)
+				}
+			}
+		})
 	}
 }
 
@@ -766,5 +900,14 @@ func TestGeneratePolicy_APIError(t *testing.T) {
 	_, err := generatePolicy(context.Background(), client, "read-only", "user-err", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for API 500 response, got nil")
+	}
+}
+
+func TestParseSessionDuration_Minimum(t *testing.T) {
+	if d, err := parseSessionDuration("10s"); err != nil || d != minSessionDuration {
+		t.Errorf("10s: got (%s, %v), want it accepted", d, err)
+	}
+	if _, err := parseSessionDuration("9999ms"); err == nil {
+		t.Error("9999ms: expected it to be rejected as shorter than the minimum")
 	}
 }

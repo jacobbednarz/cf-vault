@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -58,5 +59,15 @@ func TestEnviron_UnsetMissing(t *testing.T) {
 	e.Unset("MISSING") // should not panic
 	if len(e) != 1 {
 		t.Errorf("expected 1 entry unchanged, got %d", len(e))
+	}
+}
+
+// An environment can carry the same key more than once, and a child process
+// may read any of the copies, so every one must go.
+func TestEnviron_UnsetDuplicates(t *testing.T) {
+	e := environ{"FOO=stale", "BAR=keep", "FOO=staler", "FOOBAR=keep"}
+	e.Unset("FOO")
+	if want := (environ{"BAR=keep", "FOOBAR=keep"}); !slices.Equal(e, want) {
+		t.Errorf("got %v, want %v", []string(e), []string(want))
 	}
 }

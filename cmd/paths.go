@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
@@ -64,6 +65,10 @@ func openKeyring() (keyring.Keyring, error) {
 	cfg.FileDir = keyringDir + "/"
 
 	if backend := os.Getenv(envKeyringBackend); backend != "" {
+		available := keyring.AvailableBackends()
+		if !slices.Contains(available, keyring.BackendType(backend)) {
+			return nil, fmt.Errorf(errFmtUnavailableKeyringBackend, envKeyringBackend, backend, available)
+		}
 		cfg.AllowedBackends = []keyring.BackendType{keyring.BackendType(backend)}
 	}
 

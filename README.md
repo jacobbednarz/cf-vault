@@ -91,7 +91,9 @@ $ brew install jacobbednarz/tap/cf-vault
    There is no limit on how many profiles you have if you prefer to have
    specific profiles for your use cases. Adding a profile with a name that
    already exists fails rather than replacing it; pass `--force` to overwrite
-   it.
+   it. Overwriting also removes the credential the old profile stored, from
+   the keychain or the encrypted `secrets/<profile>.age` file, when the new
+   one is stored somewhere else.
 
 1. Now that you have created a profile, you can use it with `cf-vault exec
    [your-profile-name]`.
@@ -152,7 +154,9 @@ nothing is prompted for:
 
 - The authentication value is read from stdin with
   `--authentication-value-stdin`, or from the `CF_VAULT_AUTH_VALUE`
-  environment variable. When both are provided, stdin wins.
+  environment variable. When both are provided, stdin wins. The flag expects
+  the value to be piped in and fails when stdin is a terminal, where typing
+  it would echo it back.
 - The email address is passed with `--email`. It is required for global API
   keys and not needed for API tokens.
 
@@ -211,9 +215,11 @@ If you don't need to generate a custom token policy, you can instead use one of
 the predefined templates which takes care of the heavy lifting for you. You can
 use `read-only` (read all resources) or `write-everything` (write all resources)
 as the `--profile-template` flag and it will generate everything needed behind
-the scenes on your behalf. Note: You **still** need to provide
-`--session-duration` as well otherwise the short lived tokens will not be
-generated.
+the scenes on your behalf. The templates only apply to short lived tokens, so
+`--profile-template` and `--session-duration` must be passed together. The
+session duration is a Go duration such as `15m` or `1h`, must be at least `10s`
+so the token doesn't expire before the command gets to use it, and is rounded
+down to whole seconds.
 
 Examples:
 
@@ -323,7 +329,7 @@ manually building your policy (though you can if you understand the syntax!).
 
   Making the complete configuration look like:
 
-```toml
+  ```toml
   [profiles]
 
   [profiles.doco-example]
@@ -331,18 +337,18 @@ manually building your policy (though you can if you understand the syntax!).
     email = "me@example.com"
     session_duration = "15m"
 
-    [[policies]]
+    [[profiles.doco-example.policies]]
     effect = "allow"
 
-    [[policies.permission_groups]]
+    [[profiles.doco-example.policies.permission_groups]]
       id = "eb258a38ea634c86a0c89da6b27cb6b6"
       name = "Access: Apps and Policies Read"
 
-    [[policies.permission_groups]]
+    [[profiles.doco-example.policies.permission_groups]]
       id = "517b21aee92c4d89936c976ba6e4be55"
       name = "Zone Settings Read"
 
-    [[policies.permission_groups]]
+    [[profiles.doco-example.policies.permission_groups]]
       id = "c8fed203ed3043cba015a93ad1616f1f"
       name = "Zone Read"
 
