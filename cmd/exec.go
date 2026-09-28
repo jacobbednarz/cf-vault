@@ -146,7 +146,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		parsedSessionDuration, err := time.ParseDuration(profile.SessionDuration)
+		parsedSessionDuration, err := parseSessionDuration(profile.SessionDuration)
 		if err != nil {
 			return err
 		}

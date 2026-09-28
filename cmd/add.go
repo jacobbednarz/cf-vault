@@ -68,6 +68,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	if err := validatePolicyTemplate(profileTemplate); err != nil {
 		return err
 	}
+	if sessionDuration != "" {
+		if _, err := parseSessionDuration(sessionDuration); err != nil {
+			return fmt.Errorf(errFmtInvalidSessionDurationFlag, err)
+		}
+	}
 
 	if profileTemplate == "" && (len(accountIDs) > 0 || len(zoneIDs) > 0) {
 		return errResourceIDsNeedTemplate

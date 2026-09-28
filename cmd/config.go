@@ -26,11 +26,33 @@ func (p profile) validate() error {
 	if p.SessionDuration == "" {
 		return nil
 	}
-	if _, err := time.ParseDuration(p.SessionDuration); err != nil {
+	if _, err := parseSessionDuration(p.SessionDuration); err != nil {
 		return fmt.Errorf(errFmtInvalidSessionDuration, err)
+	}
+	if len(p.Policies) == 0 {
+		return errNoPoliciesForSessionDuration
 	}
 	_, err := p.tokenPolicies()
 	return err
+}
+
+// minSessionDuration is the shortest short lived token lifetime accepted. A
+// token that expires within moments of being created can lapse before the
+// command gets to use it, from clock drift between this machine and
+// Cloudflare or from the time taken to start the command.
+const minSessionDuration = 10 * time.Second
+
+// parseSessionDuration parses the lifetime of a short lived token, which must
+// be at least minSessionDuration.
+func parseSessionDuration(s string) (time.Duration, error) {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	if d < minSessionDuration {
+		return 0, fmt.Errorf(errFmtSessionDurationTooShort, s, minSessionDuration)
+	}
+	return d, nil
 }
 
 type policy struct {

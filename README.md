@@ -211,9 +211,8 @@ If you don't need to generate a custom token policy, you can instead use one of
 the predefined templates which takes care of the heavy lifting for you. You can
 use `read-only` (read all resources) or `write-everything` (write all resources)
 as the `--profile-template` flag and it will generate everything needed behind
-the scenes on your behalf. Note: You **still** need to provide
-`--session-duration` as well otherwise the short lived tokens will not be
-generated.
+the scenes on your behalf. The templates only apply to short lived tokens, so
+`--profile-template` and `--session-duration` must be passed together.
 
 Examples:
 

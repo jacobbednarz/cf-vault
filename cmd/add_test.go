@@ -446,7 +446,7 @@ func TestIntegration_Add_ResourceIDsRequireTemplate(t *testing.T) {
 }
 
 func TestIntegration_Add_InvalidZoneID(t *testing.T) {
-	result := runCfVault(t, nil, "add", "example", "--profile-template", "read-only", "--zone-id", "*")
+	result := runCfVault(t, nil, "add", "example", "--profile-template", "read-only", "--session-duration", "15m", "--zone-id", "*")
 
 	if result.ExitCode == 0 {
 		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
@@ -693,13 +693,61 @@ func TestIntegration_Add_UnknownTemplateRejectedBeforeCredentials(t *testing.T) 
 
 	// No credential source is given, so reaching the credential step would
 	// fail with a different error; the template error proves it ran first.
-	result := runCfVault(t, envVars, "add", "example", "--"+flagProfileTemplate, "read-everything")
+	result := runCfVault(t, envVars, "add", "example", "--"+flagProfileTemplate, "read-everything", "--"+flagSessionDuration, "15m")
 
 	if result.ExitCode == 0 {
 		t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
 	}
 	if !strings.Contains(result.Stderr, "unable to generate policy for") || !strings.Contains(result.Stderr, "read-everything") {
 		t.Errorf("expected unknown template error, got stderr=%q", result.Stderr)
+	}
+}
+
+func TestIntegration_Add_InvalidSessionDurationRejectedBeforeCredentials(t *testing.T) {
+	for _, duration := range []string{"banana", "0s", "-5m", "9s"} {
+		t.Run(duration, func(t *testing.T) {
+			configDir, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			// As above, no credential source proves the check ran first.
+			result := runCfVault(t, envVars, "add", "example", "--"+flagProfileTemplate, policyTemplateReadOnly, "--"+flagSessionDuration, duration)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			if !strings.Contains(result.Stderr, "--"+flagSessionDuration) || !strings.Contains(result.Stderr, duration) {
+				t.Errorf("expected invalid session duration error, got stderr=%q", result.Stderr)
+			}
+			if _, err := os.Stat(filepath.Join(configDir, configFileName)); !os.IsNotExist(err) {
+				t.Errorf("expected no config to be written, stat err = %v", err)
+			}
+		})
+	}
+}
+
+// A template's policies are only ever used to create short lived tokens, and
+// a session duration without policies has nothing to create a token with.
+func TestIntegration_Add_TemplateAndSessionDurationRequireEachOther(t *testing.T) {
+	tests := map[string][]string{
+		"template alone":         {"--" + flagProfileTemplate, policyTemplateReadOnly},
+		"session duration alone": {"--" + flagSessionDuration, "15m"},
+	}
+	for name, flags := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			result := runCfVault(t, envVars, append([]string{"add", "example"}, flags...)...)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			for _, flag := range []string{flagProfileTemplate, flagSessionDuration} {
+				if !strings.Contains(result.Stderr, flag) {
+					t.Errorf("expected error naming %s, got stderr=%q", flag, result.Stderr)
+				}
+			}
+		})
 	}
 }
 
@@ -766,5 +814,14 @@ func TestGeneratePolicy_APIError(t *testing.T) {
 	_, err := generatePolicy(context.Background(), client, "read-only", "user-err", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for API 500 response, got nil")
+	}
+}
+
+func TestParseSessionDuration_Minimum(t *testing.T) {
+	if d, err := parseSessionDuration("10s"); err != nil || d != minSessionDuration {
+		t.Errorf("10s: got (%s, %v), want it accepted", d, err)
+	}
+	if _, err := parseSessionDuration("9999ms"); err == nil {
+		t.Error("9999ms: expected it to be rejected as shorter than the minimum")
 	}
 }

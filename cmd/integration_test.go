@@ -661,3 +661,52 @@ func TestIntegration_Exec_ShortLivedTokenWithoutValue(t *testing.T) {
 		t.Errorf("expected the command not to run, got stdout:\n%s", result.Stdout)
 	}
 }
+
+func TestIntegration_Exec_UnusableShortLivedProfile(t *testing.T) {
+	tests := map[string]struct {
+		config string
+		want   string
+	}{
+		"no policies": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_token"
+  session_duration = "15m"
+`,
+			want: "no policies",
+		},
+		"zero session duration": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_token"
+  session_duration = "0s"
+
+  [[profiles.shortlived.policies]]
+    effect = "allow"
+    [[profiles.shortlived.policies.permission_groups]]
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    [profiles.shortlived.policies.resources]
+      "com.cloudflare.api.account.zone.*" = "*"
+`,
+			want: "session_duration",
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// No credential is stored, so failing on the config proves it was
+			// checked before the keyring was touched.
+			configDir, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+			writeConfig(t, configDir, tt.config)
+
+			result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+			}
+			if !strings.Contains(result.Stderr, tt.want) {
+				t.Errorf("expected error mentioning %q, got stderr=%q", tt.want, result.Stderr)
+			}
+		})
+	}
+}
