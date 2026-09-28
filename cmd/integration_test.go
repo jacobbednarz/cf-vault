@@ -616,6 +616,29 @@ func TestIntegration_Exec_ExecutableNotFound(t *testing.T) {
 	}
 }
 
+// Everything after the profile name belongs to the command, whether or not it
+// is separated by `--`, and flags for cf-vault itself go before the profile.
+func TestIntegration_Exec_CommandArguments(t *testing.T) {
+	tests := map[string][]string{
+		"after --":                 {"exec", "tokenprofile", "--", "sh", "-c", "echo ran"},
+		"without --":               {"exec", "tokenprofile", "sh", "-c", "echo ran"},
+		"cf-vault flag first":      {"exec", "-v", "tokenprofile", "--", "sh", "-c", "echo ran"},
+		"command flag like -v too": {"exec", "tokenprofile", "sh", "-c", "echo ran", "-v"},
+	}
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := runCfVault(t, setupTokenProfile(t), args...)
+
+			if result.ExitCode != 0 {
+				t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+			}
+			if result.Stdout != "ran\n" {
+				t.Errorf("stdout = %q, want the command's output", result.Stdout)
+			}
+		})
+	}
+}
+
 // tokenCreation is a POST /user/tokens request received by the mock API.
 type tokenCreation struct {
 	header http.Header

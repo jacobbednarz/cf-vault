@@ -76,6 +76,11 @@ func runExec(cmd *cobra.Command, args []string) error {
 	env := environ(os.Environ())
 
 	profileName, command := args[0], args[1:]
+	// Flag parsing stops at the profile name, so a `--` after it reaches us
+	// as the first word of the command rather than being consumed.
+	if len(command) > 0 && command[0] == "--" {
+		command = command[1:]
+	}
 	if err := validateProfileName(profileName); err != nil {
 		return err
 	}
