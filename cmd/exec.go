@@ -171,20 +171,27 @@ func runExec(cmd *cobra.Command, args []string) error {
 	// Should a command not be provided, drop into a fresh shell with the
 	// credentials populated alongside the existing env.
 	if len(command) == 0 {
+		shell := os.Getenv(envShell)
+		if shell == "" {
+			return errShellNotSet
+		}
 		log.Debug("launching new shell with credentials populated")
-		syscall.Exec(os.Getenv(envShell), []string{os.Getenv(envShell)}, env)
+		command = []string{shell}
 	}
 
 	executable := command[0]
 	pathtoExec, err := exec.LookPath(executable)
 	if err != nil {
-		return fmt.Errorf(errFmtExecutableNotFound, pathtoExec, err)
+		return fmt.Errorf(errFmtExecutableNotFound, executable, err)
 	}
 
 	log.Debugf("found executable %s", pathtoExec)
 	log.Debugf("executing command: %s", strings.Join(command, " "))
 
-	syscall.Exec(pathtoExec, command, env)
+	// On success Exec replaces this process and never returns.
+	if err := syscall.Exec(pathtoExec, command, env); err != nil {
+		return fmt.Errorf(errFmtRunExecutable, pathtoExec, err)
+	}
 	return nil
 }
 

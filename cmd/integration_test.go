@@ -495,3 +495,73 @@ func TestIntegration_Exec_NoWarningWithoutPreexistingCredentials(t *testing.T) {
 		t.Errorf("expected no warning, got: %q", result.Stderr)
 	}
 }
+
+// setupTokenProfile returns the env for an isolated test install holding a
+// single long lived API token profile named "tokenprofile".
+func setupTokenProfile(t *testing.T) []string {
+	t.Helper()
+
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	t.Cleanup(cleanup)
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.tokenprofile]
+    auth_type = "api_token"
+`)
+	writeKeyringItem(t, keyringDir, "tokenprofile-api_token", []byte(testAPIToken))
+	return envVars
+}
+
+func TestIntegration_Exec_NoCommandWithoutShell(t *testing.T) {
+	for name, shell := range map[string]string{
+		"unset":   "",
+		"missing": filepath.Join(t.TempDir(), "no-such-shell"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			result := runCfVault(t, append(setupTokenProfile(t), "SHELL="+shell), "exec", "tokenprofile")
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+			}
+			if strings.Contains(result.Stderr, "panic") {
+				t.Fatalf("expected an error rather than a panic, got stderr=%q", result.Stderr)
+			}
+			if shell == "" && !strings.Contains(result.Stderr, "SHELL") {
+				t.Errorf("expected error naming SHELL, got stderr=%q", result.Stderr)
+			}
+			if shell != "" && !strings.Contains(result.Stderr, shell) {
+				t.Errorf("expected error naming %s, got stderr=%q", shell, result.Stderr)
+			}
+		})
+	}
+}
+
+func TestIntegration_Exec_CommandThatCannotStart(t *testing.T) {
+	// Executable, so it passes the PATH lookup, but not a valid binary or
+	// script, so replacing the process with it fails.
+	notABinary := filepath.Join(t.TempDir(), "not-a-binary")
+	if err := os.WriteFile(notABinary, []byte{0x00, 0x01, 0x02}, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	result := runCfVault(t, setupTokenProfile(t), "exec", "tokenprofile", "--", notABinary)
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit when the command cannot start, got 0\nstderr: %s", result.Stderr)
+	}
+	if !strings.Contains(result.Stderr, notABinary) {
+		t.Errorf("expected error naming the command, got stderr=%q", result.Stderr)
+	}
+}
+
+func TestIntegration_Exec_ExecutableNotFound(t *testing.T) {
+	result := runCfVault(t, setupTokenProfile(t), "exec", "tokenprofile", "--", "cf-vault-no-such-command")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0")
+	}
+	if !strings.Contains(result.Stderr, "'cf-vault-no-such-command'") {
+		t.Errorf("expected error naming the missing executable, got stderr=%q", result.Stderr)
+	}
+}

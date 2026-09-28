@@ -14,6 +14,7 @@ var (
 	errResourceIDsNeedTemplate  = errors.New("--" + flagAccountID + " and --" + flagZoneID + " can only be used with --" + flagProfileTemplate)
 	errEmailRequiredForAPIKey   = errors.New("--" + flagEmail + " is required when adding a global API key")
 	errAuthValueSourceRequired  = errors.New("stdin is not a terminal; pass --" + flagAuthValueStdin + " or set " + envAuthValue + " to provide the authentication value")
+	errShellNotSet              = errors.New("SHELL is not set, so there is no shell to start; pass the command to run after `--` instead")
 )
 
 // Error format strings for failures that interpolate context or wrap a cause.
@@ -31,6 +32,7 @@ const (
 	errFmtReadAuthValue          = "unable to read authentication value: %w"
 	errFmtDetectAuthType         = "failed to detect authentication type: %w"
 	errFmtExecutableNotFound     = "couldn't find the executable '%s': %w"
+	errFmtRunExecutable          = "failed to run %s: %w"
 	errFmtCreateAPIToken         = "failed to create API token: %w"
 	errFmtUserFetchForPolicy     = "failed to fetch the user ID the predefined token policies are scoped to; API tokens need permission to read user details: %w"
 	errFmtFetchPermissionGroups  = "failed to fetch permission groups: %w"
