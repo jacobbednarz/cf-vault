@@ -648,6 +648,34 @@ func TestIntegration_Add_StdinTakesPrecedenceOverEnv(t *testing.T) {
 	}
 }
 
+// endlessReader never runs out, like `cf-vault add … < /dev/zero`.
+type endlessReader struct{}
+
+func (endlessReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'a'
+	}
+	return len(p), nil
+}
+
+func TestIntegration_Add_StdinReadIsBounded(t *testing.T) {
+	_, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	// Reading all of stdin before looking at it would never finish here.
+	result := runCfVaultWithStdin(t, envVars, endlessReader{}, "add", "example", "--"+flagAuthValueStdin)
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+	}
+	if !strings.Contains(result.Stderr, "too long") {
+		t.Errorf("expected an error about the value's length, got stderr=%q", result.Stderr)
+	}
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); ok {
+		t.Error("expected no credential to be stored")
+	}
+}
+
 func TestIntegration_Add_NoAuthValueSourceWithoutTerminal(t *testing.T) {
 	configDir, _, envVars, cleanup := setupTestEnv(t)
 	defer cleanup()

@@ -267,6 +267,12 @@ func validatePolicyTemplate(name string) error {
 	return fmt.Errorf(errFmtUnknownPolicyTemplate, name)
 }
 
+// maxAuthValueSize bounds how much of stdin `--authentication-value-stdin`
+// reads. Every credential format is well under 100 bytes, so this leaves room
+// for surrounding whitespace while refusing to buffer an unbounded stream
+// such as a file or device piped in by mistake.
+const maxAuthValueSize = 1024
+
 // readCredentials resolves the email address and authentication value for a
 // new profile. The authentication value comes from the first available of:
 //
@@ -278,9 +284,14 @@ func validatePolicyTemplate(name string) error {
 // to answer, and a prompt reading from piped stdin would consume the secret.
 func readCredentials(emailAddress string, fromStdin bool) (string, string, error) {
 	if fromStdin {
-		b, err := io.ReadAll(os.Stdin)
+		// Read one byte past the limit so an oversized value can be told
+		// apart from one that is exactly at it.
+		b, err := io.ReadAll(io.LimitReader(os.Stdin, maxAuthValueSize+1))
 		if err != nil {
 			return "", "", err
+		}
+		if len(b) > maxAuthValueSize {
+			return "", "", errAuthValueTooLong
 		}
 		return emailAddress, strings.TrimSpace(string(b)), nil
 	}
