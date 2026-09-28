@@ -15,6 +15,7 @@ var (
 	errEmailRequiredForAPIKey       = errors.New("--" + flagEmail + " is required when adding a global API key")
 	errAuthValueSourceRequired      = errors.New("stdin is not a terminal; pass --" + flagAuthValueStdin + " or set " + envAuthValue + " to provide the authentication value")
 	errAuthValueTooLong             = errors.New("the authentication value read from stdin is too long to be an API token or API key")
+	errAuthValueStdinIsTerminal     = errors.New("--" + flagAuthValueStdin + " reads a piped value, but stdin is a terminal; pipe the value in, or leave the flag off to be prompted for it")
 	errShellNotSet                  = errors.New("SHELL is not set, so there is no shell to start; pass the command to run after `--` instead")
 	errEmptyShortLivedToken         = errors.New("the short lived token was created but Cloudflare returned no value for it")
 	errNoPoliciesForSessionDuration = errors.New("session_duration is set but the profile has no policies to create a short lived token with; add policies or remove session_duration")

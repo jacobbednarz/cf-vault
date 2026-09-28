@@ -154,7 +154,9 @@ nothing is prompted for:
 
 - The authentication value is read from stdin with
   `--authentication-value-stdin`, or from the `CF_VAULT_AUTH_VALUE`
-  environment variable. When both are provided, stdin wins.
+  environment variable. When both are provided, stdin wins. The flag expects
+  the value to be piped in and fails when stdin is a terminal, where typing
+  it would echo it back.
 - The email address is passed with `--email`. It is required for global API
   keys and not needed for API tokens.
 

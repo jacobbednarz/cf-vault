@@ -284,6 +284,12 @@ const maxAuthValueSize = 1024
 // to answer, and a prompt reading from piped stdin would consume the secret.
 func readCredentials(emailAddress string, fromStdin bool) (string, string, error) {
 	if fromStdin {
+		// Reading a terminal to EOF would echo the secret as it is typed, with
+		// no prompt to say input is expected; the interactive prompt exists
+		// for that case.
+		if term.IsTerminal(int(os.Stdin.Fd())) {
+			return "", "", errAuthValueStdinIsTerminal
+		}
 		// Read one byte past the limit so an oversized value can be told
 		// apart from one that is exactly at it.
 		b, err := io.ReadAll(io.LimitReader(os.Stdin, maxAuthValueSize+1))
