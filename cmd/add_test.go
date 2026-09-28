@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -314,14 +315,27 @@ func TestGeneratePolicy_WriteEverything(t *testing.T) {
 		}
 	}
 
-	// No bucket may carry an `API Tokens *` permission — Cloudflare rejects
-	// POST /user/tokens with 1001 when a sub-token would be granted permissions
-	// to manage other tokens, regardless of whether the perm lives in the User
-	// or Account scope.
+	// No bucket may carry permission to manage API tokens — Cloudflare
+	// rejects POST /user/tokens with 1001 when a sub-token would be able to
+	// manage other tokens, whether the permission lives in the User or
+	// Account scope. Reading tokens is delegable.
 	for _, p := range policies {
 		for _, g := range p.PermissionGroups {
-			if strings.Contains(g.Name, "API Tokens") {
+			if strings.Contains(g.Name, "API Tokens") && !strings.HasSuffix(g.Name, " Read") {
 				t.Errorf("policy for %v contains %q, which cannot be delegated to a sub-token", p.Resources, g.Name)
+			}
+		}
+	}
+
+	// Writing everything must not grant less than reading everything.
+	readOnly, err := generatePolicy(context.Background(), client, "read-only", "user-456", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i, p := range readOnly {
+		for _, g := range p.PermissionGroups {
+			if !slices.Contains(policies[i].PermissionGroups, g) {
+				t.Errorf("read-only grants %q in policy[%d], but write-everything does not", g.Name, i)
 			}
 		}
 	}

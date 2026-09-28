@@ -350,11 +350,12 @@ func generatePolicy(ctx context.Context, client *cloudflare.Client, policyType, 
 		zoneGroups = filterReadGroups(zoneGroups)
 		userGroups = filterReadGroups(userGroups)
 	case policyTemplateWriteEverything:
-		// Cloudflare refuses POST /user/tokens when the new token would carry
-		// token-management permissions of its own ("sub-token is not allowed to
-		// have permissions to manage other tokens", code 1001). The rule applies
-		// regardless of scope, so filter both the User bucket ("API Tokens
-		// Read/Write") and the Account bucket ("Account API Tokens Read/Write").
+		// Cloudflare refuses POST /user/tokens when the new token could manage
+		// other tokens ("sub-token is not allowed to have permissions to
+		// manage other tokens", code 1001), whatever the scope. That covers
+		// "API Tokens Write" in the User bucket and "Account API Tokens Write"
+		// in the Account bucket; the matching Read groups are delegable, and
+		// the read-only template has always included "API Tokens Read".
 		accountGroups = filterAPITokensGroups(accountGroups)
 		userGroups = filterAPITokensGroups(userGroups)
 	default:
@@ -421,20 +422,25 @@ func zoneResources(accountIDs, zoneIDs []string) map[string]interface{} {
 func filterReadGroups(groups []permissionGroup) []permissionGroup {
 	var out []permissionGroup
 	for _, g := range groups {
-		if strings.Contains(g.Name, "Read") {
+		if isReadGroup(g) {
 			out = append(out, g)
 		}
 	}
 	return out
 }
 
+// filterAPITokensGroups drops the groups that grant managing API tokens.
 func filterAPITokensGroups(groups []permissionGroup) []permissionGroup {
 	var out []permissionGroup
 	for _, g := range groups {
-		if strings.Contains(g.Name, "API Tokens") {
+		if strings.Contains(g.Name, "API Tokens") && !isReadGroup(g) {
 			continue
 		}
 		out = append(out, g)
 	}
 	return out
+}
+
+func isReadGroup(g permissionGroup) bool {
+	return strings.Contains(g.Name, "Read")
 }
