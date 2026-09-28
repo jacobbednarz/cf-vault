@@ -91,7 +91,9 @@ $ brew install jacobbednarz/tap/cf-vault
    There is no limit on how many profiles you have if you prefer to have
    specific profiles for your use cases. Adding a profile with a name that
    already exists fails rather than replacing it; pass `--force` to overwrite
-   it.
+   it. Overwriting also removes the credential the old profile stored, from
+   the keychain or the encrypted `secrets/<profile>.age` file, when the new
+   one is stored somewhere else.
 
 1. Now that you have created a profile, you can use it with `cf-vault exec
    [your-profile-name]`.
