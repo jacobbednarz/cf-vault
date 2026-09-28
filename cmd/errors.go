@@ -16,25 +16,21 @@ var (
 	errAuthValueSourceRequired  = errors.New("stdin is not a terminal; pass --" + flagAuthValueStdin + " or set " + envAuthValue + " to provide the authentication value")
 )
 
-// Error message strings. Most are format strings that interpolate context or
-// wrap a cause.
+// Error format strings for failures that interpolate context or wrap a cause.
 const (
-	// errMsgUserFetchForPolicy is logged rather than returned; it is a full
-	// sentence aimed at the user, so it doesn't follow Go's error string style.
-	errMsgUserFetchForPolicy = "failed to fetch user ID from the Cloudflare API which is required to generate the predefined short lived token policies. If you are using API tokens, please allow the permission to access your user details and try again."
-
 	// Profiles and configuration.
 	errFmtInvalidProfileName    = "profile name %q is invalid; use only letters, digits, `.`, `_`, `-`, and do not start with `.`"
 	errFmtProfileNotFound       = "no profile matching %q found in the configuration file at %s"
 	errFmtProfileExists         = "profile %q already exists in %s; pass --" + flagForce + " to overwrite it"
-	errFmtParseConfigFile       = "failed to parse the configuration file at %s: %s"
+	errFmtParseConfigFile       = "failed to parse the configuration file at %s: %w"
 	errFmtUnknownSecretBackend  = "profile %q has unknown secret_backend %q; valid values are %q, %q, or unset for keychain"
 	errFmtHomeDirNotFound       = "unable to find home directory: %w"
-	errFmtOpenConfigFile        = "failed to open file at %s"
-	errFmtReadAuthValue         = "unable to read authentication value: %s"
-	errFmtDetectAuthType        = "failed to detect authentication type: %s"
-	errFmtExecutableNotFound    = "couldn't find the executable '%s': %s"
-	errFmtCreateAPIToken        = "failed to create API token: %s"
+	errFmtOpenConfigFile        = "failed to open file at %s: %w"
+	errFmtReadAuthValue         = "unable to read authentication value: %w"
+	errFmtDetectAuthType        = "failed to detect authentication type: %w"
+	errFmtExecutableNotFound    = "couldn't find the executable '%s': %w"
+	errFmtCreateAPIToken        = "failed to create API token: %w"
+	errFmtUserFetchForPolicy    = "failed to fetch the user ID the predefined token policies are scoped to; API tokens need permission to read user details: %w"
 	errFmtFetchPermissionGroups = "failed to fetch permission groups: %w"
 	errFmtUnknownPolicyTemplate = "unable to generate policy for %q, valid policy names: [" + policyTemplateReadOnly + ", " + policyTemplateWriteEverything + "]"
 	errFmtEmptyPolicyBucket     = "one or more policy buckets is empty for policy type %q (account=%d, zone=%d, user=%d); check API permissions"
@@ -42,13 +38,13 @@ const (
 	errFmtUnsupportedResources  = "policy resources must be either all strings or all tables of strings, got %v"
 
 	// Keyring backend.
-	errFmtOpenKeyring    = "failed to open keyring backend: %s"
-	errFmtGetKeyringItem = "failed to get item from keyring: %s"
-	errFmtAddKeyringItem = "Error adding credentials to keyring: %s"
+	errFmtOpenKeyring    = "failed to open keyring backend: %w"
+	errFmtGetKeyringItem = "failed to get item from keyring: %w"
+	errFmtAddKeyringItem = "failed to add credentials to keyring: %w"
 
 	// age and its plugins.
 	errFmtUnknownAgeBackend        = "unknown age backend %q"
-	errFmtDecryptAgeBackend        = "failed to decrypt secret (%s): %s"
+	errFmtDecryptAgeBackend        = "failed to decrypt secret (%s): %w"
 	errFmtAgePluginSENotFound      = "age-plugin-se not found on PATH; install it (`brew install age-plugin-se`) or place an existing identity file at %s"
 	errFmtAgePluginSEKeygen        = "age-plugin-se keygen failed: %w"
 	errFmtAgePluginYubikeyNotFound = "age-plugin-yubikey not found on PATH; install it (`brew install age-plugin-yubikey`) and either run `age-plugin-yubikey --generate` to enroll a new key, or place an existing identity file at %s"

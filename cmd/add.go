@@ -73,164 +73,163 @@ var addCmd = &cobra.Command{
 		}
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
-		profileName := strings.TrimSpace(args[0])
-		if err := validateProfileName(profileName); err != nil {
-			log.Fatal(err)
-		}
-		sessionDuration, _ := cmd.Flags().GetString(flagSessionDuration)
-		profileTemplate, _ := cmd.Flags().GetString(flagProfileTemplate)
-		accountIDs, _ := cmd.Flags().GetStringSlice(flagAccountID)
-		zoneIDs, _ := cmd.Flags().GetStringSlice(flagZoneID)
-		useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
-		useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
-		emailAddress, _ := cmd.Flags().GetString(flagEmail)
-		authValueFromStdin, _ := cmd.Flags().GetBool(flagAuthValueStdin)
-		force, _ := cmd.Flags().GetBool(flagForce)
+	RunE: runAdd,
+}
 
-		if err := validatePolicyTemplate(profileTemplate); err != nil {
-			log.Fatal(err)
-		}
+func runAdd(cmd *cobra.Command, args []string) error {
+	profileName := strings.TrimSpace(args[0])
+	if err := validateProfileName(profileName); err != nil {
+		return err
+	}
+	sessionDuration, _ := cmd.Flags().GetString(flagSessionDuration)
+	profileTemplate, _ := cmd.Flags().GetString(flagProfileTemplate)
+	accountIDs, _ := cmd.Flags().GetStringSlice(flagAccountID)
+	zoneIDs, _ := cmd.Flags().GetStringSlice(flagZoneID)
+	useSecureEnclave, _ := cmd.Flags().GetBool(flagSecureEnclave)
+	useYubikey, _ := cmd.Flags().GetBool(flagYubikey)
+	emailAddress, _ := cmd.Flags().GetString(flagEmail)
+	authValueFromStdin, _ := cmd.Flags().GetBool(flagAuthValueStdin)
+	force, _ := cmd.Flags().GetBool(flagForce)
 
-		if profileTemplate == "" && (len(accountIDs) > 0 || len(zoneIDs) > 0) {
-			log.Fatal(errResourceIDsNeedTemplate)
-		}
-		if err := validateResourceIDs("account", accountIDs); err != nil {
-			log.Fatal(err)
-		}
-		if err := validateResourceIDs("zone", zoneIDs); err != nil {
-			log.Fatal(err)
-		}
+	if err := validatePolicyTemplate(profileTemplate); err != nil {
+		return err
+	}
 
-		var secretBackend string
-		switch {
-		case useSecureEnclave:
-			secretBackend = secretBackendAgeSE
-		case useYubikey:
-			secretBackend = secretBackendAgeYubikey
-		}
+	if profileTemplate == "" && (len(accountIDs) > 0 || len(zoneIDs) > 0) {
+		return errResourceIDsNeedTemplate
+	}
+	if err := validateResourceIDs("account", accountIDs); err != nil {
+		return err
+	}
+	if err := validateResourceIDs("zone", zoneIDs); err != nil {
+		return err
+	}
 
-		configDir, err := resolveConfigDir()
+	var secretBackend string
+	switch {
+	case useSecureEnclave:
+		secretBackend = secretBackendAgeSE
+	case useYubikey:
+		secretBackend = secretBackendAgeYubikey
+	}
+
+	configDir, err := resolveConfigDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(configDir, configFileName)
+
+	existingConfigFileContents, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// A config that fails to parse must stop here: carrying on with an empty
+	// profile map would pass the existence check below and then truncate the
+	// file, deleting every profile in it.
+	tomlConfigStruct := tomlConfig{}
+	if err := toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct); err != nil {
+		return fmt.Errorf(errFmtParseConfigFile, configPath, err)
+	}
+
+	// If this is the first profile, initialise the map.
+	if len(tomlConfigStruct.Profiles) == 0 {
+		tomlConfigStruct.Profiles = make(map[string]profile)
+	}
+
+	// Checked before reading any credentials so an accidental overwrite
+	// fails without the user entering (or piping) a secret for nothing.
+	if _, exists := tomlConfigStruct.Profiles[profileName]; exists && !force {
+		return fmt.Errorf(errFmtProfileExists, profileName, configPath)
+	}
+
+	emailAddress, authValue, err := readCredentials(emailAddress, authValueFromStdin)
+	if err != nil {
+		return fmt.Errorf(errFmtReadAuthValue, err)
+	}
+
+	authType, err := determineAuthType(authValue)
+	if err != nil {
+		return fmt.Errorf(errFmtDetectAuthType, err)
+	}
+
+	// Global API keys authenticate with the email alongside the key; API
+	// tokens carry the identity themselves.
+	if authType == authTypeAPIKey && emailAddress == "" {
+		return errEmailRequiredForAPIKey
+	}
+
+	os.MkdirAll(configDir, 0700)
+
+	newProfile := profile{
+		Email:           emailAddress,
+		AuthType:        authType,
+		SessionDuration: sessionDuration,
+		SecretBackend:   secretBackend,
+	}
+
+	if profileTemplate != "" {
+		cfClient := newClient(authValue, authType, emailAddress)
+
+		// The policies require that one of the resources is the current user,
+		// so the credential being added must be able to read its own user.
+		userDetails, err := cfClient.User.Get(context.Background())
 		if err != nil {
-			log.Fatal(err)
-		}
-		configPath := filepath.Join(configDir, configFileName)
-
-		existingConfigFileContents, err := os.ReadFile(configPath)
-		if err != nil && !os.IsNotExist(err) {
-			log.Fatal(err)
+			return fmt.Errorf(errFmtUserFetchForPolicy, err)
 		}
 
-		// A config that fails to parse must stop here: carrying on with an empty
-		// profile map would pass the existence check below and then truncate the
-		// file, deleting every profile in it.
-		tomlConfigStruct := tomlConfig{}
-		if err := toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct); err != nil {
-			log.Fatalf(errFmtParseConfigFile, configPath, err)
-		}
-
-		// If this is the first profile, initialise the map.
-		if len(tomlConfigStruct.Profiles) == 0 {
-			tomlConfigStruct.Profiles = make(map[string]profile)
-		}
-
-		// Checked before reading any credentials so an accidental overwrite
-		// fails without the user entering (or piping) a secret for nothing.
-		if _, exists := tomlConfigStruct.Profiles[profileName]; exists && !force {
-			log.Fatalf(errFmtProfileExists, profileName, configPath)
-		}
-
-		emailAddress, authValue, err := readCredentials(emailAddress, authValueFromStdin)
+		generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, userDetails.ID, accountIDs, zoneIDs)
 		if err != nil {
-			log.Fatalf(errFmtReadAuthValue, err)
+			return err
 		}
+		newProfile.Policies = generatedPolicy
+	}
 
-		authType, err := determineAuthType(authValue)
+	log.Debugf("new profile: %+v", newProfile)
+
+	// Persist the credential first — if storage fails we don't want an
+	// orphaned profile entry in config.toml pointing at nothing.
+	var successMessage string
+	switch secretBackend {
+	case secretBackendAgeSE, secretBackendAgeYubikey:
+		recipient, err := ensureAgeIdentity(configDir, secretBackend)
 		if err != nil {
-			log.Fatalf(errFmtDetectAuthType, err)
+			return err
 		}
-
-		// Global API keys authenticate with the email alongside the key; API
-		// tokens carry the identity themselves.
-		if authType == authTypeAPIKey && emailAddress == "" {
-			log.Fatal(errEmailRequiredForAPIKey)
+		if err := encryptWithAge(recipient, ageSecretPath(configDir, profileName), []byte(authValue)); err != nil {
+			return err
 		}
-
-		os.MkdirAll(configDir, 0700)
-
-		newProfile := profile{
-			Email:           emailAddress,
-			AuthType:        authType,
-			SessionDuration: sessionDuration,
-			SecretBackend:   secretBackend,
+		if secretBackend == secretBackendAgeSE {
+			successMessage = msgSuccessSecureEnclave
+		} else {
+			successMessage = msgSuccessYubikey
 		}
-
-		if profileTemplate != "" {
-			cfClient := newClient(authValue, authType, emailAddress)
-
-			// The policies require that one of the resources is the current user.
-			// This leads to a potential chicken/egg scenario where the user doesn't
-			// valid credentials but needs them to generate the resources. We
-			// intentionally spit out `Debug` and `Fatal` messages here to show the
-			// original error *and* the friendly version of how to resolve it.
-			userDetails, err := cfClient.User.Get(context.Background())
-			if err != nil {
-				log.Debug(err)
-				log.Fatal(errMsgUserFetchForPolicy)
-			}
-
-			generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, userDetails.ID, accountIDs, zoneIDs)
-			if err != nil {
-				log.Fatal(err)
-			}
-			newProfile.Policies = generatedPolicy
-		}
-
-		log.Debugf("new profile: %+v", newProfile)
-
-		// Persist the credential first — if storage fails we don't want an
-		// orphaned profile entry in config.toml pointing at nothing.
-		var successMessage string
-		switch secretBackend {
-		case secretBackendAgeSE, secretBackendAgeYubikey:
-			recipient, err := ensureAgeIdentity(configDir, secretBackend)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if err := encryptWithAge(recipient, ageSecretPath(configDir, profileName), []byte(authValue)); err != nil {
-				log.Fatal(err)
-			}
-			if secretBackend == secretBackendAgeSE {
-				successMessage = msgSuccessSecureEnclave
-			} else {
-				successMessage = msgSuccessYubikey
-			}
-		default:
-			ring, err := openKeyring()
-			if err != nil {
-				log.Fatalf(errFmtOpenKeyring, err)
-			}
-			if err := ring.Set(keyring.Item{
-				Key:  fmt.Sprintf("%s-%s", profileName, authType),
-				Data: []byte(authValue),
-			}); err != nil {
-				log.Fatalf(errFmtAddKeyringItem, err)
-			}
-			successMessage = msgSuccessKeyring
-		}
-
-		tomlConfigStruct.Profiles[profileName] = newProfile
-		configFile, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
+	default:
+		ring, err := openKeyring()
 		if err != nil {
-			log.Fatalf(errFmtOpenConfigFile, configPath)
+			return fmt.Errorf(errFmtOpenKeyring, err)
 		}
-		defer configFile.Close()
-		if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
-			log.Fatal(err)
+		if err := ring.Set(keyring.Item{
+			Key:  fmt.Sprintf("%s-%s", profileName, authType),
+			Data: []byte(authValue),
+		}); err != nil {
+			return fmt.Errorf(errFmtAddKeyringItem, err)
 		}
+		successMessage = msgSuccessKeyring
+	}
 
-		fmt.Println(successMessage)
-	},
+	tomlConfigStruct.Profiles[profileName] = newProfile
+	configFile, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
+	if err != nil {
+		return fmt.Errorf(errFmtOpenConfigFile, configPath, err)
+	}
+	defer configFile.Close()
+	if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
+		return err
+	}
+
+	fmt.Println(successMessage)
+	return nil
 }
 
 // profileNameRE restricts profile names to a filesystem-safe subset. Profile

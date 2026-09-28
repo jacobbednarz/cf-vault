@@ -30,6 +30,8 @@ var keyringDefaults = keyring.Config{
 var rootCmd = &cobra.Command{
 	Use:  projectName,
 	Long: "Manage your Cloudflare credentials, securely",
+	// Errors are reported on their own; the full usage text buries them.
+	SilenceUsage: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			log.SetLevel(log.DebugLevel)

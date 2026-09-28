@@ -7,7 +7,6 @@ import (
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/pelletier/go-toml"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -15,59 +14,62 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all available profiles",
 	Long:  "",
-	Run: func(cmd *cobra.Command, args []string) {
-		configDir, err := resolveConfigDir()
-		if err != nil {
-			log.Fatal(err)
-		}
-		configPath := filepath.Join(configDir, configFileName)
+	RunE:  runList,
+}
 
-		configData, err := os.ReadFile(configPath)
-		if err != nil {
-			log.Fatal(err)
-		}
+func runList(cmd *cobra.Command, args []string) error {
+	configDir, err := resolveConfigDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(configDir, configFileName)
 
-		config := tomlConfig{}
-		err = toml.Unmarshal(configData, &config)
-		if err != nil {
-			log.Fatal(err)
-		}
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
 
-		if len(config.Profiles) == 0 {
-			fmt.Printf(msgFmtNoProfilesFound, configPath)
-			os.Exit(0)
-		}
+	config := tomlConfig{}
+	err = toml.Unmarshal(configData, &config)
+	if err != nil {
+		return err
+	}
 
-		tableData := [][]string{}
-		for profileName, profile := range config.Profiles {
-			// Only display the email if we're using API tokens otherwise the value is
-			// not used and pretty superfluous.
-			var emailString string
-			if profile.AuthType == authTypeAPIKey {
-				emailString = profile.Email
-			}
+	if len(config.Profiles) == 0 {
+		fmt.Printf(msgFmtNoProfilesFound, configPath)
+		return nil
+	}
 
-			tableData = append(tableData, []string{
-				profileName,
-				profile.AuthType,
-				emailString,
-			})
+	tableData := [][]string{}
+	for profileName, profile := range config.Profiles {
+		// Only display the email if we're using API tokens otherwise the value is
+		// not used and pretty superfluous.
+		var emailString string
+		if profile.AuthType == authTypeAPIKey {
+			emailString = profile.Email
 		}
 
-		table := tablewriter.NewWriter(os.Stdout)
-		table.SetHeader([]string{"Profile name", "Authentication type", "Email"})
-		table.SetAutoWrapText(false)
-		table.SetAutoFormatHeaders(true)
-		table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
-		table.SetAlignment(tablewriter.ALIGN_LEFT)
-		table.SetCenterSeparator("")
-		table.SetColumnSeparator("")
-		table.SetRowSeparator("")
-		table.SetHeaderLine(false)
-		table.SetBorder(false)
-		table.SetTablePadding("\t")
-		table.SetNoWhiteSpace(true)
-		table.AppendBulk(tableData)
-		table.Render()
-	},
+		tableData = append(tableData, []string{
+			profileName,
+			profile.AuthType,
+			emailString,
+		})
+	}
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Profile name", "Authentication type", "Email"})
+	table.SetAutoWrapText(false)
+	table.SetAutoFormatHeaders(true)
+	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetCenterSeparator("")
+	table.SetColumnSeparator("")
+	table.SetRowSeparator("")
+	table.SetHeaderLine(false)
+	table.SetBorder(false)
+	table.SetTablePadding("\t")
+	table.SetNoWhiteSpace(true)
+	table.AppendBulk(tableData)
+	table.Render()
+	return nil
 }
