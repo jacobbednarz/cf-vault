@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -68,10 +70,13 @@ type permissionGroup struct {
 	Name string `toml:"name,omitempty"`
 }
 
-// loadConfig reads and decodes the config file at path. A missing file is
-// reported as an error wrapping fs.ErrNotExist.
+// loadConfig reads and decodes the config file at path. A file that doesn't
+// exist yet is an empty config: nothing has been added.
 func loadConfig(path string) (tomlConfig, error) {
 	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return tomlConfig{}, nil
+	}
 	if err != nil {
 		return tomlConfig{}, err
 	}

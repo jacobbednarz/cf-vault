@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -255,6 +256,47 @@ func TestIntegration_List_MultipleProfiles(t *testing.T) {
 	}
 	if !strings.Contains(result.Stdout, "profile-two") {
 		t.Errorf("expected 'profile-two' in output, got: %q", result.Stdout)
+	}
+}
+
+func TestIntegration_List_SortedByName(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	names := []string{"delta", "alpha", "echo", "charlie", "bravo"}
+	var config strings.Builder
+	for _, name := range names {
+		fmt.Fprintf(&config, "[profiles.%s]\nauth_type = \"api_token\"\n", name)
+	}
+	writeConfig(t, configDir, config.String())
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	var listed []string
+	for _, line := range strings.Split(result.Stdout, "\n")[1:] {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			listed = append(listed, fields[0])
+		}
+	}
+	if want := []string{"alpha", "bravo", "charlie", "delta", "echo"}; !slices.Equal(listed, want) {
+		t.Errorf("listed profiles %v, want %v", listed, want)
+	}
+}
+
+func TestIntegration_List_NoConfigFile(t *testing.T) {
+	_, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0 before any profile is added, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "no profiles found") {
+		t.Errorf("expected 'no profiles found' in output, got: %q", result.Stdout)
 	}
 }
 

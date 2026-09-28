@@ -3,10 +3,8 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -102,7 +100,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// profile map would pass the existence check below and then overwrite the
 	// file, deleting every profile in it.
 	config, err := loadConfig(configPath)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err != nil {
 		return err
 	}
 	if config.Profiles == nil {
