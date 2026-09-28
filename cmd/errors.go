@@ -44,6 +44,7 @@ const (
 	errFmtEmptyPolicyBucket          = "one or more policy buckets is empty for policy type %q (account=%d, zone=%d, user=%d); check API permissions"
 	errFmtInvalidResourceID          = "%s ID %q is invalid; expected a 32 character hexadecimal string"
 	errFmtUnsupportedResources       = "policy resources must be either all strings or all tables of strings, got %v"
+	errFmtInvalidPolicyEffect        = "policy effect %q is invalid; expected %q or %q"
 
 	// Keyring backend.
 	errFmtOpenKeyring       = "failed to open keyring backend: %w"

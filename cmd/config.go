@@ -60,7 +60,6 @@ func parseSessionDuration(s string) (time.Duration, error) {
 
 type policy struct {
 	Effect           string                 `toml:"effect"`
-	ID               string                 `toml:"id,omitempty"`
 	PermissionGroups []permissionGroup      `toml:"permission_groups"`
 	Resources        map[string]interface{} `toml:"resources"`
 }

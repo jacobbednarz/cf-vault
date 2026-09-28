@@ -216,12 +216,16 @@ func (p profile) tokenPolicies() ([]shared.TokenPolicyParam, error) {
 				ID: cloudflare.F(g.ID),
 			})
 		}
+		effect := shared.TokenPolicyEffect(pol.Effect)
+		if !effect.IsKnown() {
+			return nil, fmt.Errorf(errFmtInvalidPolicyEffect, pol.Effect, shared.TokenPolicyEffectAllow, shared.TokenPolicyEffectDeny)
+		}
 		resources, err := tokenPolicyResources(pol.Resources)
 		if err != nil {
 			return nil, err
 		}
 		policies = append(policies, shared.TokenPolicyParam{
-			Effect:           cloudflare.F(shared.TokenPolicyEffect(pol.Effect)),
+			Effect:           cloudflare.F(effect),
 			PermissionGroups: cloudflare.F(groups),
 			Resources:        cloudflare.F(resources),
 		})

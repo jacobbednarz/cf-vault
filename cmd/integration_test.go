@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -755,6 +756,16 @@ func TestIntegration_Exec_ShortLivedToken(t *testing.T) {
 	if want := before.Add(15 * time.Minute); expiresOn.Before(want.Add(-2*time.Second)) || expiresOn.After(want.Add(time.Minute)) {
 		t.Errorf("expires_on = %s, want about 15 minutes from %s", expiresOn, before)
 	}
+	// The profile's policy must arrive whole: a token missing its permission
+	// groups or resources is either rejected or grants nothing.
+	wantPolicies := []interface{}{map[string]interface{}{
+		"effect":            "allow",
+		"permission_groups": []interface{}{map[string]interface{}{"id": "c8fed203ed3043cba015a93ad1616f1f"}},
+		"resources":         map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+	}}
+	if !reflect.DeepEqual(request.body["policies"], wantPolicies) {
+		t.Errorf("token created with policies %v, want %v", request.body["policies"], wantPolicies)
+	}
 }
 
 func TestIntegration_Exec_ShortLivedTokenWithoutValue(t *testing.T) {
@@ -797,6 +808,21 @@ func TestIntegration_Exec_UnusableShortLivedProfile(t *testing.T) {
       "com.cloudflare.api.account.zone.*" = "*"
 `,
 			want: "session_duration",
+		},
+		"misspelt policy effect": {
+			config: `
+[profiles.shortlived]
+  auth_type = "api_token"
+  session_duration = "15m"
+
+  [[profiles.shortlived.policies]]
+    effect = "alow"
+    [[profiles.shortlived.policies.permission_groups]]
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    [profiles.shortlived.policies.resources]
+      "com.cloudflare.api.account.zone.*" = "*"
+`,
+			want: `"alow"`,
 		},
 	}
 	for name, tt := range tests {
