@@ -15,9 +15,7 @@ jobs:
       - name: Format
         run: test -z "$(gofmt -l .)"
       - name: Lint
-        run: |
-          go generate -tags tools tools/tools.go
-          $(go env GOPATH)/bin/golint -set_exit_status .
+        run: go run golang.org/x/lint/golint@v0.0.0-20210508222113-6edffad5e616 -set_exit_status .
       - name: Vet
         run: go vet ./...
       - name: Test
