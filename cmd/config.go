@@ -95,10 +95,12 @@ func loadConfig(path string) (tomlConfig, error) {
 // over the old one, so a failed or interrupted write leaves the previous
 // config intact instead of a truncated file.
 func saveConfig(path string, config tomlConfig) error {
-	// Rename replaces a symlink rather than writing through it, so resolve it
-	// first to keep a linked config, such as one kept in a dotfiles repo.
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		path = resolved
+	// Rename replaces a symlink rather than writing through it, so find the
+	// file it leads to first to keep a linked config, such as one kept in a
+	// dotfiles repo.
+	path, err := symlinkTarget(path)
+	if err != nil {
+		return err
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -125,4 +127,37 @@ func saveConfig(path string, config tomlConfig) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// maxSymlinkHops bounds symlinkTarget, matching the limit Linux applies
+// before giving up on a loop of links.
+const maxSymlinkHops = 40
+
+// symlinkTarget follows path through any symlinks to the file they lead to,
+// which, unlike with filepath.EvalSymlinks, need not exist yet.
+func symlinkTarget(path string) (string, error) {
+	for range maxSymlinkHops {
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) || (err == nil && info.Mode()&os.ModeSymlink == 0) {
+			return path, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return "", err
+		}
+		if !filepath.IsAbs(target) {
+			// A relative link is relative to the directory it really lives
+			// in, which may itself be reached through a symlink.
+			dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+			if err != nil {
+				return "", err
+			}
+			target = filepath.Join(dir, target)
+		}
+		path = target
+	}
+	return "", fmt.Errorf(errFmtConfigSymlinkLoop, path)
 }

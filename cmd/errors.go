@@ -30,6 +30,7 @@ const (
 	errFmtProfileExists              = "profile %q already exists in %s; pass --" + flagForce + " to overwrite it"
 	errFmtParseConfigFile            = "failed to parse the configuration file at %s: %w"
 	errFmtEncodeConfigFile           = "failed to encode the configuration file: %w"
+	errFmtConfigSymlinkLoop          = "too many levels of symlinks resolving the configuration file, last at %s"
 	errFmtInvalidSessionDuration     = "invalid session_duration: %w"
 	errFmtInvalidSessionDurationFlag = "invalid --" + flagSessionDuration + ": %w"
 	errFmtSessionDurationTooShort    = "%q is shorter than the minimum of %s"

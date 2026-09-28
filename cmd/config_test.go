@@ -93,3 +93,37 @@ func TestSaveConfig_WritesThroughSymlink(t *testing.T) {
 		t.Errorf("symlink target after save = %+v, %v", got, err)
 	}
 }
+
+// A config linked from a dotfiles repository before the target exists must
+// still be written through the link, creating the target, as a first `add`
+// would otherwise quietly replace the link with a regular file.
+func TestSaveConfig_WritesThroughDanglingSymlink(t *testing.T) {
+	for name, relative := range map[string]bool{"absolute link": false, "relative link": true} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			target := filepath.Join(dir, "dotfiles", "cf-vault", configFileName)
+			link := filepath.Join(dir, "config", configFileName)
+			if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			linkTo := target
+			if relative {
+				linkTo = filepath.Join("..", "dotfiles", "cf-vault", configFileName)
+			}
+			if err := os.Symlink(linkTo, link); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := saveConfig(link, savedConfig); err != nil {
+				t.Fatal(err)
+			}
+
+			if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+				t.Fatalf("expected %s to remain a symlink, got %v, %v", link, info, err)
+			}
+			if got, err := loadConfig(target); err != nil || got.Profiles["work"].AuthType != authTypeAPIToken {
+				t.Errorf("symlink target after save = %+v, %v", got, err)
+			}
+		})
+	}
+}
