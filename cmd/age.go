@@ -24,16 +24,28 @@ const (
 	secretBackendAgeYubikey = "age-yubikey"
 )
 
-// ageIdentityPath returns the identity file for a given age backend. A single
-// identity is reused across all profiles bound to that backend.
-func ageIdentityPath(configDir, backend string) string {
-	switch backend {
-	case secretBackendAgeSE:
-		return filepath.Join(configDir, ageIdentitySEFileName)
-	case secretBackendAgeYubikey:
-		return filepath.Join(configDir, ageIdentityYubikeyFileName)
-	}
-	return ""
+// ageBackend is a hardware-backed age identity that credentials can be
+// encrypted to. A single identity is reused across all profiles bound to it.
+type ageBackend struct {
+	identityFileName string
+	successMessage   string
+	// ensureIdentity returns the recipient (public key) of the identity at
+	// idPath, bootstrapping the identity file on first use where possible.
+	ensureIdentity func(idPath string) (string, error)
+}
+
+// ageBackends maps each `secret_backend` value to its age identity.
+var ageBackends = map[string]ageBackend{
+	secretBackendAgeSE: {
+		identityFileName: ageIdentitySEFileName,
+		successMessage:   msgSuccessSecureEnclave,
+		ensureIdentity:   ensureSEIdentity,
+	},
+	secretBackendAgeYubikey: {
+		identityFileName: ageIdentityYubikeyFileName,
+		successMessage:   msgSuccessYubikey,
+		ensureIdentity:   ensureYubikeyIdentity,
+	},
 }
 
 // ageSecretPath returns the ciphertext location for a profile. Filenames are
@@ -42,22 +54,9 @@ func ageSecretPath(configDir, profileName string) string {
 	return filepath.Join(configDir, secretsDirName, profileName+ageSecretFileExt)
 }
 
-// ensureAgeIdentity returns the recipient (public key) for the given backend's
-// identity, bootstrapping the identity file on first use where possible.
-func ensureAgeIdentity(configDir, backend string) (string, error) {
-	switch backend {
-	case secretBackendAgeSE:
-		return ensureSEIdentity(configDir)
-	case secretBackendAgeYubikey:
-		return ensureYubikeyIdentity(configDir)
-	}
-	return "", fmt.Errorf(errFmtUnknownAgeBackend, backend)
-}
-
 // ensureSEIdentity generates a Secure Enclave age identity on first use — no
 // user interaction is required beyond the Touch ID prompt on subsequent decrypts.
-func ensureSEIdentity(configDir string) (string, error) {
-	idPath := ageIdentityPath(configDir, secretBackendAgeSE)
+func ensureSEIdentity(idPath string) (string, error) {
 	if _, err := os.Stat(idPath); os.IsNotExist(err) {
 		if _, err := exec.LookPath(binAgePluginSE); err != nil {
 			return "", fmt.Errorf(errFmtAgePluginSENotFound, idPath)
@@ -80,8 +79,7 @@ func ensureSEIdentity(configDir string) (string, error) {
 // silently generate one — we either use the identity file the user has already
 // placed, or fall back to `age-plugin-yubikey --identity` if there's exactly one
 // on-key identity available and cache its recipient locally.
-func ensureYubikeyIdentity(configDir string) (string, error) {
-	idPath := ageIdentityPath(configDir, secretBackendAgeYubikey)
+func ensureYubikeyIdentity(idPath string) (string, error) {
 	if _, err := os.Stat(idPath); err == nil {
 		return readAgeRecipient(idPath)
 	}

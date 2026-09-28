@@ -16,10 +16,8 @@ import (
 	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/cloudflare/cloudflare-go/v6/user"
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/term"
-
-	"github.com/99designs/keyring"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var addCmd = &cobra.Command{
@@ -158,33 +156,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Persist the credential first — if storage fails we don't want an
 	// orphaned profile entry in config.toml pointing at nothing.
-	var successMessage string
-	switch secretBackend {
-	case secretBackendAgeSE, secretBackendAgeYubikey:
-		recipient, err := ensureAgeIdentity(configDir, secretBackend)
-		if err != nil {
-			return err
-		}
-		if err := encryptWithAge(recipient, ageSecretPath(configDir, profileName), []byte(authValue)); err != nil {
-			return err
-		}
-		if secretBackend == secretBackendAgeSE {
-			successMessage = msgSuccessSecureEnclave
-		} else {
-			successMessage = msgSuccessYubikey
-		}
-	default:
-		ring, err := openKeyring()
-		if err != nil {
-			return fmt.Errorf(errFmtOpenKeyring, err)
-		}
-		if err := ring.Set(keyring.Item{
-			Key:  fmt.Sprintf("%s-%s", profileName, authType),
-			Data: []byte(authValue),
-		}); err != nil {
-			return fmt.Errorf(errFmtAddKeyringItem, err)
-		}
-		successMessage = msgSuccessKeyring
+	store, err := openSecretStore(configDir, profileName, newProfile)
+	if err != nil {
+		return err
+	}
+	if err := store.Set([]byte(authValue)); err != nil {
+		return err
+	}
+
+	successMessage := msgSuccessKeyring
+	if backend, ok := ageBackends[secretBackend]; ok {
+		successMessage = backend.successMessage
 	}
 
 	config.Profiles[profileName] = newProfile

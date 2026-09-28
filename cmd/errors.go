@@ -43,7 +43,6 @@ const (
 	errFmtAddKeyringItem = "failed to add credentials to keyring: %w"
 
 	// age and its plugins.
-	errFmtUnknownAgeBackend        = "unknown age backend %q"
 	errFmtDecryptAgeBackend        = "failed to decrypt secret (%s): %w"
 	errFmtAgePluginSENotFound      = "age-plugin-se not found on PATH; install it (`brew install age-plugin-se`) or place an existing identity file at %s"
 	errFmtAgePluginSEKeygen        = "age-plugin-se keygen failed: %w"

@@ -113,27 +113,13 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errFmtProfileNotFound, profileName, configPath)
 	}
 
-	var secret []byte
-	switch profile.SecretBackend {
-	case secretBackendAgeSE, secretBackendAgeYubikey:
-		plaintext, err := decryptWithAge(ageIdentityPath(configDir, profile.SecretBackend), ageSecretPath(configDir, profileName))
-		if err != nil {
-			return fmt.Errorf(errFmtDecryptAgeBackend, profile.SecretBackend, err)
-		}
-		secret = plaintext
-	case "":
-		ring, err := openKeyring()
-		if err != nil {
-			return fmt.Errorf(errFmtOpenKeyring, err)
-		}
-
-		keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profile.AuthType))
-		if err != nil {
-			return fmt.Errorf(errFmtGetKeyringItem, err)
-		}
-		secret = keychain.Data
-	default:
-		return fmt.Errorf(errFmtUnknownSecretBackend, profileName, profile.SecretBackend, secretBackendAgeSE, secretBackendAgeYubikey)
+	store, err := openSecretStore(configDir, profileName, profile)
+	if err != nil {
+		return err
+	}
+	secret, err := store.Get()
+	if err != nil {
+		return err
 	}
 
 	env.Set(envVaultSession, profileName)
