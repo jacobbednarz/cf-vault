@@ -80,14 +80,10 @@ var execCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		env := environ(os.Environ())
 
-		profileName := args[0]
+		profileName, command := args[0], args[1:]
 		if err := validateProfileName(profileName); err != nil {
 			log.Fatal(err)
 		}
-		// Remove the extra executable name at the beginning of the slice.
-		copy(args[0:], args[0+1:])
-		args[len(args)-1] = ""
-		args = args[:len(args)-1]
 
 		// Don't allow nesting of cf-vault sessions, it gets messy.
 		if os.Getenv(envVaultSession) != "" {
@@ -123,11 +119,10 @@ var execCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		if _, ok := config.Profiles[profileName]; !ok {
+		profile, ok := config.Profiles[profileName]
+		if !ok {
 			log.Fatalf(errFmtProfileNotFound, profileName, configPath)
 		}
-
-		profile := config.Profiles[profileName]
 
 		var secret []byte
 		switch profile.SecretBackend {
@@ -140,12 +135,12 @@ var execCmd = &cobra.Command{
 		case "":
 			ring, err := openKeyring()
 			if err != nil {
-				log.Fatalf(errFmtOpenKeyring, strings.ToLower(err.Error()))
+				log.Fatalf(errFmtOpenKeyring, err)
 			}
 
 			keychain, err := ring.Get(fmt.Sprintf("%s-%s", profileName, profile.AuthType))
 			if err != nil {
-				log.Fatalf(errFmtGetKeyringItem, strings.ToLower(err.Error()))
+				log.Fatalf(errFmtGetKeyringItem, err)
 			}
 			secret = keychain.Data
 		default:
@@ -188,8 +183,8 @@ var execCmd = &cobra.Command{
 			if err != nil {
 				log.Fatal(err)
 			}
-			now, _ := time.Parse(time.RFC3339, time.Now().UTC().Format(time.RFC3339))
-			tokenExpiry := now.Add(time.Second * time.Duration(parsedSessionDuration.Seconds()))
+			now := time.Now().UTC().Truncate(time.Second)
+			tokenExpiry := now.Add(parsedSessionDuration.Truncate(time.Second))
 
 			shortLivedToken, err := cfClient.User.Tokens.New(context.Background(), user.TokenNewParams{
 				Name:      cloudflare.F(fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix())),
@@ -211,21 +206,21 @@ var execCmd = &cobra.Command{
 
 		// Should a command not be provided, drop into a fresh shell with the
 		// credentials populated alongside the existing env.
-		if len(args) == 0 {
+		if len(command) == 0 {
 			log.Debug("launching new shell with credentials populated")
 			syscall.Exec(os.Getenv(envShell), []string{os.Getenv(envShell)}, env)
 		}
 
-		executable := args[0]
+		executable := command[0]
 		pathtoExec, err := exec.LookPath(executable)
 		if err != nil {
 			log.Fatalf(errFmtExecutableNotFound, pathtoExec, err.Error())
 		}
 
 		log.Debugf("found executable %s", pathtoExec)
-		log.Debugf("executing command: %s", strings.Join(args, " "))
+		log.Debugf("executing command: %s", strings.Join(command, " "))
 
-		syscall.Exec(pathtoExec, args, env)
+		syscall.Exec(pathtoExec, command, env)
 	},
 }
 

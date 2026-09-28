@@ -165,26 +165,15 @@ var addCmd = &cobra.Command{
 		os.MkdirAll(configDir, 0700)
 
 		newProfile := profile{
-			Email:    emailAddress,
-			AuthType: authType,
-		}
-
-		if sessionDuration != "" {
-			newProfile.SessionDuration = sessionDuration
-		} else {
-			log.Debug("session-duration was not set, not using short lived tokens")
-		}
-
-		if secretBackend != "" {
-			newProfile.SecretBackend = secretBackend
-		}
-
-		var cfClient *cloudflare.Client
-		if profileTemplate != "" {
-			cfClient = newClient(authValue, authType, emailAddress)
+			Email:           emailAddress,
+			AuthType:        authType,
+			SessionDuration: sessionDuration,
+			SecretBackend:   secretBackend,
 		}
 
 		if profileTemplate != "" {
+			cfClient := newClient(authValue, authType, emailAddress)
+
 			// The policies require that one of the resources is the current user.
 			// This leads to a potential chicken/egg scenario where the user doesn't
 			// valid credentials but needs them to generate the resources. We
@@ -225,7 +214,7 @@ var addCmd = &cobra.Command{
 		default:
 			ring, err := openKeyring()
 			if err != nil {
-				log.Fatalf(errFmtOpenKeyring, strings.ToLower(err.Error()))
+				log.Fatalf(errFmtOpenKeyring, err)
 			}
 			if err := ring.Set(keyring.Item{
 				Key:  fmt.Sprintf("%s-%s", profileName, authType),
