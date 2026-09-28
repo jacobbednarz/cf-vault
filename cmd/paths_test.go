@@ -10,7 +10,19 @@ import (
 	"github.com/mitchellh/go-homedir"
 )
 
+// isolateHome points the home directory at an empty temporary one, so the
+// path helpers never see the developer's own `~/.cf-vault`.
+func isolateHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	homedir.Reset()
+	t.Cleanup(homedir.Reset)
+	return home
+}
+
 func TestResolveConfigDir_Legacy(t *testing.T) {
+	isolateHome(t)
 	orig := os.Getenv("XDG_CONFIG_HOME")
 	os.Unsetenv("XDG_CONFIG_HOME")
 	defer os.Setenv("XDG_CONFIG_HOME", orig)
@@ -24,6 +36,7 @@ func TestResolveConfigDir_Legacy(t *testing.T) {
 }
 
 func TestResolveConfigDir_XDG(t *testing.T) {
+	isolateHome(t)
 	os.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
 	defer os.Unsetenv("XDG_CONFIG_HOME")
 	dir, err := resolveConfigDir()
@@ -87,6 +100,7 @@ func TestResolveConfigDir_XDG_WarnIfLegacyExists(t *testing.T) {
 }
 
 func TestResolveKeyringDir_Legacy(t *testing.T) {
+	isolateHome(t)
 	orig := os.Getenv("XDG_DATA_HOME")
 	os.Unsetenv("XDG_DATA_HOME")
 	defer os.Setenv("XDG_DATA_HOME", orig)
@@ -100,6 +114,7 @@ func TestResolveKeyringDir_Legacy(t *testing.T) {
 }
 
 func TestResolveKeyringDir_XDG(t *testing.T) {
+	isolateHome(t)
 	os.Setenv("XDG_DATA_HOME", "/tmp/xdg-data")
 	defer os.Unsetenv("XDG_DATA_HOME")
 	dir, err := resolveKeyringDir()

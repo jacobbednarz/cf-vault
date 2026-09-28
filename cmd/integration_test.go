@@ -71,6 +71,14 @@ func runCfVaultWithStdin(t *testing.T, extraEnv []string, stdin io.Reader, args 
 		env.Unset(name)
 	}
 	env.Unset(envAuthValue)
+	// Point every location cf-vault could fall back to at throwaway storage,
+	// so no test reads or writes the developer's own config, keys or
+	// keychain. extraEnv, such as from setupTestEnv, overrides these.
+	env.Unset(envXDGConfigHome)
+	env.Unset(envXDGDataHome)
+	env.Set("HOME", t.TempDir())
+	env.Set(envKeyringBackend, string(keyring.FileBackend))
+	env.Set(envFilePassphrase, "test-passphrase")
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Env = append(env, extraEnv...)
@@ -283,6 +291,26 @@ func TestIntegration_List_SortedByName(t *testing.T) {
 	}
 	if want := []string{"alpha", "bravo", "charlie", "delta", "echo"}; !slices.Equal(listed, want) {
 		t.Errorf("listed profiles %v, want %v", listed, want)
+	}
+}
+
+// The binary under test must never see the developer's home directory: a
+// `~/.cf-vault` there adds a warning to every run, and a test that falls back
+// to the legacy paths would read or rewrite a real config.
+func TestIntegration_IsolatedFromDevelopersHome(t *testing.T) {
+	developerHome := t.TempDir()
+	if err := os.Mkdir(filepath.Join(developerHome, ".cf-vault"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", developerHome)
+
+	for name, envVars := range map[string][]string{"no extra env": nil, "setupTestEnv": setupTokenProfile(t)} {
+		t.Run(name, func(t *testing.T) {
+			result := runCfVault(t, envVars, "list")
+			if output := result.Stdout + result.Stderr; strings.Contains(output, developerHome) {
+				t.Errorf("cf-vault used the developer's home directory, output=%q", output)
+			}
+		})
 	}
 }
 
