@@ -197,26 +197,51 @@ type mockPermGroup struct {
 	Scopes []string `json:"scopes"`
 }
 
-// permGroupResponse is the envelope the Cloudflare API wraps results in.
-type permGroupResponse struct {
-	Success  bool            `json:"success"`
-	Errors   []interface{}   `json:"errors"`
-	Messages []interface{}   `json:"messages"`
-	Result   []mockPermGroup `json:"result"`
+// apiResponse is the envelope the Cloudflare API wraps results in.
+type apiResponse struct {
+	Success  bool          `json:"success"`
+	Errors   []interface{} `json:"errors"`
+	Messages []interface{} `json:"messages"`
+	Result   interface{}   `json:"result"`
 }
 
-// newMockPermGroupServer starts an httptest.Server serving GET /user/tokens/permission_groups.
+func writeAPIResult(w http.ResponseWriter, result interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(apiResponse{
+		Success:  true,
+		Errors:   []interface{}{},
+		Messages: []interface{}{},
+		Result:   result,
+	})
+}
+
+// testUserID is the user the mock API authenticates requests as.
+const testUserID = "user-123"
+
+// newMockPermGroupServer starts an httptest.Server serving the user's
+// permission groups and details, as used for user API tokens.
 func newMockPermGroupServer(t *testing.T, groups []mockPermGroup) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/user/tokens/permission_groups", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(permGroupResponse{
-			Success:  true,
-			Errors:   []interface{}{},
-			Messages: []interface{}{},
-			Result:   groups,
-		})
+		writeAPIResult(w, groups)
+	})
+	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
+		writeAPIResult(w, map[string]string{"id": testUserID})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// newMockAccountPermGroupServer starts an httptest.Server serving only the
+// permission groups of accountID, as used for account API tokens. Account
+// tokens have no user, so any request for one fails.
+func newMockAccountPermGroupServer(t *testing.T, accountID string, groups []mockPermGroup) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/accounts/"+accountID+"/tokens/permission_groups", func(w http.ResponseWriter, r *http.Request) {
+		writeAPIResult(w, groups)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -251,7 +276,7 @@ func TestGeneratePolicy_ReadOnly(t *testing.T) {
 	srv := newMockPermGroupServer(t, representativeGroups)
 	client := newTestClient(t, srv.URL)
 
-	policies, err := generatePolicy(context.Background(), client, "read-only", "user-123", nil, nil)
+	policies, err := generatePolicy(context.Background(), client, "read-only", "", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -272,7 +297,7 @@ func TestGeneratePolicy_ReadOnly(t *testing.T) {
 	wantResources := []string{
 		"com.cloudflare.api.account.*",
 		"com.cloudflare.api.account.zone.*",
-		"com.cloudflare.api.user.user-123",
+		"com.cloudflare.api.user." + testUserID,
 	}
 	for i, want := range wantResources {
 		if _, ok := policies[i].Resources[want]; !ok {
@@ -294,7 +319,7 @@ func TestGeneratePolicy_WriteEverything(t *testing.T) {
 	srv := newMockPermGroupServer(t, representativeGroups)
 	client := newTestClient(t, srv.URL)
 
-	policies, err := generatePolicy(context.Background(), client, "write-everything", "user-456", nil, nil)
+	policies, err := generatePolicy(context.Background(), client, "write-everything", "", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -331,7 +356,7 @@ func TestGeneratePolicy_WriteEverything(t *testing.T) {
 	}
 
 	// Writing everything must not grant less than reading everything.
-	readOnly, err := generatePolicy(context.Background(), client, "read-only", "user-456", nil, nil)
+	readOnly, err := generatePolicy(context.Background(), client, "read-only", "", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -348,7 +373,7 @@ func TestGeneratePolicy_UnknownType(t *testing.T) {
 	srv := newMockPermGroupServer(t, representativeGroups)
 	client := newTestClient(t, srv.URL)
 
-	_, err := generatePolicy(context.Background(), client, "superadmin", "user-789", nil, nil)
+	_, err := generatePolicy(context.Background(), client, "superadmin", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for unknown policy type, got nil")
 	}
@@ -372,10 +397,11 @@ func TestGeneratePolicy_ResourceRestrictions(t *testing.T) {
 		groupPrefix string
 		resources   map[string]interface{}
 	}
-	userPolicy := wantPolicy{"user-", map[string]interface{}{"com.cloudflare.api.user.user-123": "*"}}
+	userPolicy := wantPolicy{"user-", map[string]interface{}{"com.cloudflare.api.user." + testUserID: "*"}}
 
 	tests := []struct {
 		name       string
+		owner      string
 		accountIDs []string
 		zoneIDs    []string
 		want       []wantPolicy
@@ -424,14 +450,49 @@ func TestGeneratePolicy_ResourceRestrictions(t *testing.T) {
 				userPolicy,
 			},
 		},
+		// Account API tokens only reach their own account and have no user,
+		// so the owner stands in for every account and the user policy goes.
+		{
+			name:  "account owned tokens default to their own account",
+			owner: acctA,
+			want: []wantPolicy{
+				{"acct-", map[string]interface{}{"com.cloudflare.api.account." + acctA: "*"}},
+				{"zone-", map[string]interface{}{
+					"com.cloudflare.api.account." + acctA: map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+				}},
+			},
+		},
+		{
+			name:       "account owned tokens restricted to their own account",
+			owner:      acctA,
+			accountIDs: []string{acctA},
+			want: []wantPolicy{
+				{"acct-", map[string]interface{}{"com.cloudflare.api.account." + acctA: "*"}},
+				{"zone-", map[string]interface{}{
+					"com.cloudflare.api.account." + acctA: map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"},
+				}},
+			},
+		},
+		{
+			name:    "account owned tokens restricted to zones drop the account policy",
+			owner:   acctA,
+			zoneIDs: []string{zoneA},
+			want: []wantPolicy{
+				{"zone-", map[string]interface{}{"com.cloudflare.api.account.zone." + zoneA: "*"}},
+			},
+		},
 	}
 
-	srv := newMockPermGroupServer(t, representativeGroups)
-	client := newTestClient(t, srv.URL)
+	userClient := newTestClient(t, newMockPermGroupServer(t, representativeGroups).URL)
+	accountClient := newTestClient(t, newMockAccountPermGroupServer(t, acctA, representativeGroups).URL)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			policies, err := generatePolicy(context.Background(), client, "read-only", "user-123", tt.accountIDs, tt.zoneIDs)
+			client := userClient
+			if tt.owner != "" {
+				client = accountClient
+			}
+			policies, err := generatePolicy(context.Background(), client, "read-only", tt.owner, tt.accountIDs, tt.zoneIDs)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -846,12 +907,30 @@ func TestGeneratePolicy_EmptyBucket(t *testing.T) {
 	srv := newMockPermGroupServer(t, groups)
 	client := newTestClient(t, srv.URL)
 
-	_, err := generatePolicy(context.Background(), client, "read-only", "user-000", nil, nil)
+	_, err := generatePolicy(context.Background(), client, "read-only", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for empty zone bucket, got nil")
 	}
 	if !strings.Contains(err.Error(), "empty") || !strings.Contains(err.Error(), "zone=0") {
 		t.Errorf("error should mention empty bucket and zone=0, got: %v", err)
+	}
+}
+
+// Account API tokens get no user policy, so they must not need user groups.
+func TestGeneratePolicy_AccountOwnedNeedsNoUserGroups(t *testing.T) {
+	const owner = "01a7362d577a6c3019a474fd6f485823"
+	groups := []mockPermGroup{
+		{ID: "acct-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account"}},
+		{ID: "zone-read", Name: "DNS Read", Scopes: []string{"com.cloudflare.api.account.zone"}},
+	}
+	client := newTestClient(t, newMockAccountPermGroupServer(t, owner, groups).URL)
+
+	policies, err := generatePolicy(context.Background(), client, "read-only", owner, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(policies) != 2 {
+		t.Errorf("expected account and zone policies, got %d: %+v", len(policies), policies)
 	}
 }
 
@@ -868,7 +947,7 @@ func TestGeneratePolicy_EmptyAccountBucket(t *testing.T) {
 	srv := newMockPermGroupServer(t, groups)
 	client := newTestClient(t, srv.URL)
 
-	policies, err := generatePolicy(context.Background(), client, "read-only", "user-000", nil, []string{zone})
+	policies, err := generatePolicy(context.Background(), client, "read-only", "", nil, []string{zone})
 	if err != nil {
 		t.Fatalf("zone-only restriction should not need account groups, got: %v", err)
 	}
@@ -882,7 +961,7 @@ func TestGeneratePolicy_EmptyAccountBucket(t *testing.T) {
 		"account and zone ID": {[]string{acct}, []string{zone}},
 	}
 	for name, c := range cases {
-		_, err := generatePolicy(context.Background(), client, "read-only", "user-000", c.accountIDs, c.zoneIDs)
+		_, err := generatePolicy(context.Background(), client, "read-only", "", c.accountIDs, c.zoneIDs)
 		if err == nil || !strings.Contains(err.Error(), "account=0") {
 			t.Errorf("%s: expected empty account bucket error, got %v", name, err)
 		}
@@ -897,7 +976,7 @@ func TestGeneratePolicy_APIError(t *testing.T) {
 	t.Cleanup(srv.Close)
 	client := newTestClient(t, srv.URL)
 
-	_, err := generatePolicy(context.Background(), client, "read-only", "user-err", nil, nil)
+	_, err := generatePolicy(context.Background(), client, "read-only", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for API 500 response, got nil")
 	}
@@ -909,5 +988,125 @@ func TestParseSessionDuration_Minimum(t *testing.T) {
 	}
 	if _, err := parseSessionDuration("9999ms"); err == nil {
 		t.Error("9999ms: expected it to be rejected as shorter than the minimum")
+	}
+}
+
+const (
+	testOwnerAccountID  = "01a7362d577a6c3019a474fd6f485823"
+	testAccountAPIToken = accountAPITokenPrefix + testAPIToken + "0a1b2c3d"
+)
+
+func TestIntegration_Add_OwnerAccountIDRejected(t *testing.T) {
+	template := []string{"--" + flagProfileTemplate, policyTemplateReadOnly, "--" + flagSessionDuration, "15m"}
+	tests := map[string]struct {
+		secret string
+		flags  []string
+		want   string
+	}{
+		"on a global API key": {
+			secret: testAPIKey,
+			flags:  []string{"--" + flagEmail, "user@example.com", "--" + flagOwnerAccountID, testOwnerAccountID},
+			want:   errOwnerAccountIDForAPIKey.Error(),
+		},
+		"on a user API token": {
+			secret: userAPITokenPrefix + testAPIToken + "0a1b2c3d",
+			flags:  []string{"--" + flagOwnerAccountID, testOwnerAccountID},
+			want:   errOwnerAccountIDForUserToken.Error(),
+		},
+		"missing for a short lived account API token": {
+			secret: testAccountAPIToken,
+			flags:  template,
+			want:   errOwnerAccountIDRequired.Error(),
+		},
+		"malformed": {
+			secret: testAccountAPIToken,
+			flags:  []string{"--" + flagOwnerAccountID, "../user"},
+			want:   `owner account ID "../user" is invalid`,
+		},
+		"restricted to another account": {
+			secret: testAccountAPIToken,
+			flags: append([]string{
+				"--" + flagOwnerAccountID, testOwnerAccountID,
+				"--" + flagAccountID, "9a7806061c88ada191ed06f989cc3dac",
+			}, template...),
+			want: "9a7806061c88ada191ed06f989cc3dac is outside it",
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			configDir, _, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			// No API is reachable, so each must fail before calling one.
+			args := append([]string{"add", "example"}, tt.flags...)
+			result := runCfVault(t, append(envVars, envAuthValue+"="+tt.secret, "CLOUDFLARE_BASE_URL=http://127.0.0.1:1"), args...)
+
+			if result.ExitCode == 0 {
+				t.Fatalf("expected non-zero exit, got 0\nstdout: %s\nstderr: %s", result.Stdout, result.Stderr)
+			}
+			if !strings.Contains(result.Stderr, tt.want) {
+				t.Errorf("expected error containing %q, got stderr=%q", tt.want, result.Stderr)
+			}
+			if _, err := os.Stat(filepath.Join(configDir, configFileName)); !os.IsNotExist(err) {
+				t.Errorf("expected no config to be written, stat err = %v", err)
+			}
+		})
+	}
+}
+
+func TestIntegration_Add_AccountAPIToken(t *testing.T) {
+	// Legacy tokens don't say who owns them, so the flag alone marks one as
+	// an account API token.
+	for _, secret := range []string{testAccountAPIToken, testAPIToken} {
+		t.Run(secret[:5], func(t *testing.T) {
+			configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+			defer cleanup()
+
+			result := runCfVault(t, append(envVars, envAuthValue+"="+secret),
+				"add", "example", "--"+flagOwnerAccountID, testOwnerAccountID)
+
+			if result.ExitCode != 0 {
+				t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+			}
+			got := readTestConfig(t, configDir).Profiles["example"]
+			if got.AuthType != authTypeAPIToken || got.OwnerAccountID != testOwnerAccountID {
+				t.Errorf("got auth_type=%q owner_account_id=%q, want %q and %q", got.AuthType, got.OwnerAccountID, authTypeAPIToken, testOwnerAccountID)
+			}
+			if stored, _ := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); string(stored) != secret {
+				t.Errorf("stored secret = %q, want %q", stored, secret)
+			}
+		})
+	}
+}
+
+func TestIntegration_Add_AccountAPITokenTemplate(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+	// The mock serves nothing outside the owning account, so reaching for
+	// the user's permission groups or details fails the command.
+	srv := newMockAccountPermGroupServer(t, testOwnerAccountID, representativeGroups)
+
+	result := runCfVault(t, append(envVars, envAuthValue+"="+testAccountAPIToken, "CLOUDFLARE_BASE_URL="+srv.URL),
+		"add", "example", "--"+flagOwnerAccountID, testOwnerAccountID,
+		"--"+flagProfileTemplate, policyTemplateReadOnly, "--"+flagSessionDuration, "15m")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	got := readTestConfig(t, configDir).Profiles["example"]
+	if got.OwnerAccountID != testOwnerAccountID {
+		t.Errorf("owner_account_id = %q, want %q", got.OwnerAccountID, testOwnerAccountID)
+	}
+	wantResources := []map[string]interface{}{
+		{"com.cloudflare.api.account." + testOwnerAccountID: "*"},
+		{"com.cloudflare.api.account." + testOwnerAccountID: map[string]interface{}{"com.cloudflare.api.account.zone.*": "*"}},
+	}
+	if len(got.Policies) != len(wantResources) {
+		t.Fatalf("expected account and zone policies, got %+v", got.Policies)
+	}
+	for i, want := range wantResources {
+		if !reflect.DeepEqual(got.Policies[i].Resources, want) {
+			t.Errorf("policy[%d] resources:\n got  %v\n want %v", i, got.Policies[i].Resources, want)
+		}
 	}
 }

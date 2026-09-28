@@ -14,7 +14,6 @@ import (
 
 	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/cloudflare/cloudflare-go/v6/shared"
-	"github.com/cloudflare/cloudflare-go/v6/user"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -160,20 +159,17 @@ func runExec(cmd *cobra.Command, args []string) error {
 		// whenever that clock runs ahead of Cloudflare's.
 		tokenExpiry := time.Now().UTC().Truncate(time.Second).Add(parsedSessionDuration.Truncate(time.Second))
 
-		shortLivedToken, err := cfClient.User.Tokens.New(context.Background(), user.TokenNewParams{
-			Name:      cloudflare.F(fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix())),
-			ExpiresOn: cloudflare.F(tokenExpiry),
-			Policies:  cloudflare.F(tokenPolicies),
-		})
+		name := fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix())
+		shortLivedToken, err := createToken(context.Background(), cfClient, profile.OwnerAccountID, name, tokenExpiry, tokenPolicies)
 		if err != nil {
 			return fmt.Errorf(errFmtCreateAPIToken, err)
 		}
 
-		if shortLivedToken.Value == "" {
+		if shortLivedToken == "" {
 			return errEmptyShortLivedToken
 		}
-		env.Set(envCloudflareAPIToken, shortLivedToken.Value)
-		env.Set(envCFAPIToken, shortLivedToken.Value)
+		env.Set(envCloudflareAPIToken, shortLivedToken)
+		env.Set(envCFAPIToken, shortLivedToken)
 
 		env.Set(envCloudflareSessionExpiry, strconv.Itoa(int(tokenExpiry.Unix())))
 	}

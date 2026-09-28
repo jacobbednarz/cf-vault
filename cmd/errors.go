@@ -19,6 +19,9 @@ var (
 	errShellNotSet                  = errors.New("SHELL is not set, so there is no shell to start; pass the command to run after `--` instead")
 	errEmptyShortLivedToken         = errors.New("the short lived token was created but Cloudflare returned no value for it")
 	errNoPoliciesForSessionDuration = errors.New("session_duration is set but the profile has no policies to create a short lived token with; add policies or remove session_duration")
+	errOwnerAccountIDForAPIKey      = errors.New("an owner account ID is only for account API tokens; global API keys belong to a user")
+	errOwnerAccountIDForUserToken   = errors.New("--" + flagOwnerAccountID + " was passed, but the API token is owned by a user rather than an account")
+	errOwnerAccountIDRequired       = errors.New("account API tokens create short lived tokens in the account that owns them; pass its ID with --" + flagOwnerAccountID)
 )
 
 // Error format strings for failures that interpolate context or wrap a cause.
@@ -41,11 +44,12 @@ const (
 	errFmtExecutableNotFound         = "couldn't find the executable '%s': %w"
 	errFmtRunExecutable              = "failed to run %s: %w"
 	errFmtCreateAPIToken             = "failed to create API token: %w"
-	errFmtUserFetchForPolicy         = "failed to fetch the user ID the predefined token policies are scoped to; API tokens need permission to read user details: %w"
-	errFmtFetchPermissionGroups      = "failed to fetch permission groups: %w"
+	errFmtUserFetchForPolicy         = "failed to fetch the user ID the predefined token policies are scoped to; API tokens need permission to read user details, and account API tokens need --" + flagOwnerAccountID + ": %w"
+	errFmtFetchPermissionGroups      = "failed to fetch permission groups; account API tokens need --" + flagOwnerAccountID + ": %w"
 	errFmtUnknownPolicyTemplate      = "unable to generate policy for %q, valid policy names: [" + policyTemplateReadOnly + ", " + policyTemplateWriteEverything + "]"
 	errFmtEmptyPolicyBucket          = "one or more policy buckets is empty for policy type %q (account=%d, zone=%d, user=%d); check API permissions"
 	errFmtInvalidResourceID          = "%s ID %q is invalid; expected a 32 character hexadecimal string"
+	errFmtAccountOutsideOwner        = "account API tokens only reach the account that owns them, %s; --" + flagAccountID + " %s is outside it"
 	errFmtUnsupportedResources       = "policy resources must be either all strings or all tables of strings, got %v"
 	errFmtInvalidPolicyEffect        = "policy effect %q is invalid; expected %q or %q"
 

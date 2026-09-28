@@ -248,6 +248,30 @@ Examples:
 - `cf-vault add my-account-profile --profile-template "write-everything" --session-duration "15m" --account-id "01a7362d577a6c3019a474fd6f485823"`
 - `cf-vault add my-zone-profile --profile-template "read-only" --session-duration "15m" --zone-id "023e105f4ecef8ad9ca31a8372d0c353" --zone-id "353c0d2738a13ac9da8fece4f501e320"`
 
+## Account API tokens
+
+[Account API tokens] belong to an account rather than a user, so they keep
+working after the person who created them leaves. Add one by passing the ID
+of the account that owns it with `--owner-account-id`:
+
+```shell
+$ printf '%s' "$TOKEN" | cf-vault add ci --authentication-value-stdin --owner-account-id 01a7362d577a6c3019a474fd6f485823
+```
+
+The ID is saved to the profile as `owner_account_id`, and short lived tokens
+are then created in that account instead of for your user. An account token
+can only reach its own account, so with `--profile-template`:
+
+- the account permissions and all zones default to the owning account instead
+  of every account you have access to;
+- `--account-id` may only name the owning account; and
+- there are no user permissions, as there is no user.
+
+The flag is the only thing that makes a profile an account token profile;
+without it a token is treated as a user's. As a safeguard, a `cfat_` token
+needs `--owner-account-id` before short lived tokens can be created from it,
+and a `cfut_` token is refused with the flag.
+
 ## Generating token policies
 
 While TOML is more readable, its not always straight forward to generate the
@@ -356,3 +380,4 @@ manually building your policy (though you can if you understand the syntax!).
   ```
 
 [principle of least privilege]: https://en.wikipedia.org/wiki/Principle_of_least_privilege
+[Account API tokens]: https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/

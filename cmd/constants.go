@@ -47,11 +47,22 @@ const (
 	policyResourceAllAccounts   = policyResourceAccountPrefix + "*"
 	policyResourceAllZones      = policyResourceZonePrefix + "*"
 
+	// Scopes Cloudflare lists token permission groups under.
+	permissionScopeAccount = "com.cloudflare.api.account"
+	permissionScopeZone    = "com.cloudflare.api.account.zone"
+	permissionScopeUser    = "com.cloudflare.api.user"
+
+	// Prefixes of the scannable API token formats, which say who owns the
+	// token. Legacy tokens carry no such marker.
+	userAPITokenPrefix    = "cfut_"
+	accountAPITokenPrefix = "cfat_"
+
 	// Command line flag names shared between flag registration and lookup.
 	flagVerbose         = "verbose"
 	flagProfileTemplate = "profile-template"
 	flagAccountID       = "account-id"
 	flagZoneID          = "zone-id"
+	flagOwnerAccountID  = "owner-account-id"
 	flagSessionDuration = "session-duration"
 	flagSecureEnclave   = "secure-enclave"
 	flagYubikey         = "yubikey"
