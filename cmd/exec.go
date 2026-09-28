@@ -12,7 +12,6 @@ import (
 
 	"os/exec"
 
-	"github.com/99designs/keyring"
 	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/cloudflare/cloudflare-go/v6/shared"
 	"github.com/cloudflare/cloudflare-go/v6/user"
@@ -70,12 +69,6 @@ var execCmd = &cobra.Command{
 			return errProfileArgRequired
 		}
 		return nil
-	},
-	PreRun: func(cmd *cobra.Command, args []string) {
-		if verbose {
-			log.SetLevel(log.DebugLevel)
-			keyring.Debug = true
-		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		env := environ(os.Environ())

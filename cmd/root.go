@@ -30,17 +30,12 @@ var keyringDefaults = keyring.Config{
 var rootCmd = &cobra.Command{
 	Use:  projectName,
 	Long: "Manage your Cloudflare credentials, securely",
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
 			log.SetLevel(log.DebugLevel)
-		}
-
-		if len(args) == 0 {
-			cmd.Help()
-			os.Exit(0)
+			keyring.Debug = true
 		}
 	},
-	Run: func(cmd *cobra.Command, args []string) {},
 }
 
 // Get passphrase prompt (copied from https://github.com/99designs/aws-vault)

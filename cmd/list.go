@@ -15,11 +15,6 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all available profiles",
 	Long:  "",
-	PreRun: func(cmd *cobra.Command, args []string) {
-		if verbose {
-			log.SetLevel(log.DebugLevel)
-		}
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		configDir, err := resolveConfigDir()
 		if err != nil {
