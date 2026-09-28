@@ -50,10 +50,11 @@ const (
 	errFmtInvalidPolicyEffect        = "policy effect %q is invalid; expected %q or %q"
 
 	// Keyring backend.
-	errFmtOpenKeyring       = "failed to open keyring backend: %w"
-	errFmtGetKeyringItem    = "failed to get item from keyring: %w"
-	errFmtAddKeyringItem    = "failed to add credentials to keyring: %w"
-	errFmtRemoveKeyringItem = "failed to remove item from keyring: %w"
+	errFmtOpenKeyring               = "failed to open keyring backend: %w"
+	errFmtGetKeyringItem            = "failed to get item from keyring: %w"
+	errFmtAddKeyringItem            = "failed to add credentials to keyring: %w"
+	errFmtRemoveKeyringItem         = "failed to remove item from keyring: %w"
+	errFmtUnavailableKeyringBackend = "%s=%q is not a keyring backend available on this system; available backends: %v"
 
 	// age and its plugins.
 	errFmtDecryptAgeBackend        = "failed to decrypt secret (%s): %w"

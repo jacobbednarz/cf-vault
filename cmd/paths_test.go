@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/99designs/keyring"
 	"github.com/mitchellh/go-homedir"
 )
 
@@ -124,5 +125,22 @@ func TestResolveKeyringDir_XDG(t *testing.T) {
 	want := filepath.Join("/tmp/xdg-data", "cf-vault", "keys")
 	if dir != want {
 		t.Errorf("expected %s, got %s", want, dir)
+	}
+}
+
+// A misspelt CF_VAULT_BACKEND should say what was asked for and what could
+// have been, not just that some backend isn't available.
+func TestOpenKeyring_UnavailableBackend(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv(envKeyringBackend, "keychian")
+
+	_, err := openKeyring()
+	if err == nil {
+		t.Fatal("expected an error for an unavailable backend")
+	}
+	for _, want := range []string{`"keychian"`, string(keyring.FileBackend)} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %s", err, want)
+		}
 	}
 }
