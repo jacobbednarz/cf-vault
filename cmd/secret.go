@@ -77,13 +77,18 @@ func (s keyringStore) Set(secret []byte) error {
 }
 
 func (s keyringStore) Delete() error {
-	// The file backend reports a missing item as the underlying fs error
-	// rather than keyring.ErrKeyNotFound.
 	err := s.ring.Remove(s.key)
-	if err != nil && !errors.Is(err, keyring.ErrKeyNotFound) && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf(errFmtRemoveKeyringItem, err)
+	if err == nil {
+		return nil
 	}
-	return nil
+	// Backends disagree on how Remove reports a missing item: the file
+	// backend returns the raw fs error and the macOS keychain its own, neither
+	// being keyring.ErrKeyNotFound. GetMetadata does translate it, and reads
+	// no secret data, so it doesn't prompt for keychain access.
+	if _, metaErr := s.ring.GetMetadata(s.key); errors.Is(metaErr, keyring.ErrKeyNotFound) {
+		return nil
+	}
+	return fmt.Errorf(errFmtRemoveKeyringItem, err)
 }
 
 // ageStore keeps the credential in a file encrypted to a hardware-backed age
