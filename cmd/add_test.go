@@ -631,6 +631,7 @@ func TestIntegration_Add_ExistingProfileRequiresForce(t *testing.T) {
     email = "old@example.com"
     auth_type = "api_key"
 `)
+	writeKeyringItem(t, keyringDir, "example-"+authTypeAPIKey, []byte(testAPIKey))
 
 	result := runCfVaultWithStdin(t, envVars, strings.NewReader(testAPIToken), "add", "example", "--"+flagAuthValueStdin)
 
@@ -646,6 +647,9 @@ func TestIntegration_Add_ExistingProfileRequiresForce(t *testing.T) {
 	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); ok {
 		t.Error("expected no credential to be stored without --force")
 	}
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIKey); !ok {
+		t.Error("expected the existing credential to be kept without --force")
+	}
 
 	result = runCfVaultWithStdin(t, envVars, strings.NewReader(testAPIToken), "add", "example", "--"+flagAuthValueStdin, "--"+flagForce)
 
@@ -657,6 +661,11 @@ func TestIntegration_Add_ExistingProfileRequiresForce(t *testing.T) {
 	}
 	if stored, _ := readKeyringItem(t, keyringDir, "example-"+authTypeAPIToken); string(stored) != testAPIToken {
 		t.Errorf("stored secret = %q, want %q", stored, testAPIToken)
+	}
+	// The replaced profile's credential lived under a different key, so it
+	// would be orphaned in the keyring if it weren't removed.
+	if _, ok := readKeyringItem(t, keyringDir, "example-"+authTypeAPIKey); ok {
+		t.Error("expected the replaced profile's credential to be removed")
 	}
 }
 

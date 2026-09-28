@@ -46,9 +46,10 @@ const (
 	errFmtUnsupportedResources       = "policy resources must be either all strings or all tables of strings, got %v"
 
 	// Keyring backend.
-	errFmtOpenKeyring    = "failed to open keyring backend: %w"
-	errFmtGetKeyringItem = "failed to get item from keyring: %w"
-	errFmtAddKeyringItem = "failed to add credentials to keyring: %w"
+	errFmtOpenKeyring       = "failed to open keyring backend: %w"
+	errFmtGetKeyringItem    = "failed to get item from keyring: %w"
+	errFmtAddKeyringItem    = "failed to add credentials to keyring: %w"
+	errFmtRemoveKeyringItem = "failed to remove item from keyring: %w"
 
 	// age and its plugins.
 	errFmtDecryptAgeBackend        = "failed to decrypt secret (%s): %w"

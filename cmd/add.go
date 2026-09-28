@@ -111,7 +111,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Checked before reading any credentials so an accidental overwrite
 	// fails without the user entering (or piping) a secret for nothing.
-	if _, exists := config.Profiles[profileName]; exists && !force {
+	previous, exists := config.Profiles[profileName]
+	if exists && !force {
 		return fmt.Errorf(errFmtProfileExists, profileName, configPath)
 	}
 
@@ -177,6 +178,18 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	config.Profiles[profileName] = newProfile
 	if err := saveConfig(configPath, config); err != nil {
 		return err
+	}
+
+	// Only once nothing refers to it any more, drop the credential of the
+	// profile that was replaced, unless storing the new one overwrote it.
+	if exists && !sameSecretLocation(previous, newProfile) {
+		replaced, err := openSecretStore(configDir, profileName, previous)
+		if err == nil {
+			err = replaced.Delete()
+		}
+		if err != nil {
+			log.Warnf(msgFmtReplacedSecretNotRemoved, err)
+		}
 	}
 
 	fmt.Println(successMessage)
