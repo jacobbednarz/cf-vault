@@ -216,7 +216,10 @@ the predefined templates which takes care of the heavy lifting for you. You can
 use `read-only` (read all resources) or `write-everything` (write all resources)
 as the `--profile-template` flag and it will generate everything needed behind
 the scenes on your behalf. The templates only apply to short lived tokens, so
-`--profile-template` and `--session-duration` must be passed together.
+`--profile-template` and `--session-duration` must be passed together. The
+session duration is a Go duration such as `15m` or `1h`, must be at least `10s`
+so the token doesn't expire before the command gets to use it, and is rounded
+down to whole seconds.
 
 Examples:
 
