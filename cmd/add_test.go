@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,27 +18,56 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-func TestDetermineAuthType_APIToken(t *testing.T) {
-	// 40-char alphanumeric+hyphen+underscore = API token
-	token := "abcdefghijklmnopqrstuvwxyzABCDEF12345678"
-	got, err := determineAuthType(token)
-	if err != nil {
-		t.Fatal(err)
+func TestDetermineAuthType(t *testing.T) {
+	body := "abcdefghijklmnopqrstuvwxyzABCDEF12345678" // 40 chars
+	checksum := "0a1b2c3d"
+	hex40 := "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+
+	cases := map[string]struct {
+		value string
+		want  string
+	}{
+		"scannable user token":      {"cfut_" + body + checksum, authTypeAPIToken},
+		"scannable account token":   {"cfat_" + body + checksum, authTypeAPIToken},
+		"scannable global key":      {"cfk_" + body + checksum, authTypeAPIKey},
+		"legacy token":              {body, authTypeAPIToken},
+		"legacy token with symbols": {"abcdefghij-klmnopqrst_uvwxyzABCD12345678", authTypeAPIToken},
+		"legacy key 37 chars":       {hex40[:37], authTypeAPIKey},
+		"legacy key 45 chars":       {hex40 + "c3d4e", authTypeAPIKey},
+		"legacy key 40 chars":       {hex40, authTypeAPIKey},
 	}
-	if got != "api_token" {
-		t.Errorf("expected api_token, got %s", got)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := determineAuthType(tc.value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("determineAuthType(%q) = %s, want %s", tc.value, got, tc.want)
+			}
+		})
 	}
 }
 
-func TestDetermineAuthType_APIKey(t *testing.T) {
-	// 37-char hex = API key
-	key := "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f67"
-	got, err := determineAuthType(key)
-	if err != nil {
-		t.Fatal(err)
+func TestDetermineAuthType_Invalid(t *testing.T) {
+	body := "abcdefghijklmnopqrstuvwxyzABCDEF12345678"
+	invalid := map[string]string{
+		"empty":                    "",
+		"too short":                "tooshort",
+		"legacy token too long":    body + "9",
+		"legacy key too short":     "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6",
+		"legacy key too long":      "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6",
+		"scannable body too short": "cfut_" + body[:39],
+		"unknown prefix":           "cfxx_" + body + "0a1b2c3d",
+		"surrounding whitespace":   " " + body,
+		"trailing text":            body + " extra",
 	}
-	if got != "api_key" {
-		t.Errorf("expected api_key, got %s", got)
+	for name, value := range invalid {
+		t.Run(name, func(t *testing.T) {
+			if got, err := determineAuthType(value); !errors.Is(err, errInvalidAuthValueFormat) {
+				t.Errorf("determineAuthType(%q) = (%s, %v), want %v", value, got, err, errInvalidAuthValueFormat)
+			}
+		})
 	}
 }
 
@@ -64,17 +94,6 @@ func TestValidateProfileName(t *testing.T) {
 		if err := validateProfileName(name); err == nil {
 			t.Errorf("expected %q to be rejected, got no error", name)
 		}
-	}
-}
-
-func TestDetermineAuthType_Invalid(t *testing.T) {
-	_, err := determineAuthType("tooshort")
-	if err == nil {
-		t.Error("expected error for invalid value, got nil")
-		return
-	}
-	if !strings.Contains(err.Error(), "invalid") {
-		t.Errorf("unexpected error message: %s", err.Error())
 	}
 }
 

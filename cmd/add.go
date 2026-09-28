@@ -281,14 +281,34 @@ func validateResourceIDs(kind string, ids []string) error {
 	return nil
 }
 
+// Credential formats, per
+// https://developers.cloudflare.com/fundamentals/api/get-started/token-formats/.
+// The scannable formats are a prefix, a 40 character body and a checksum
+// whose length isn't documented, so only a lower bound is enforced.
+var (
+	scannableAPITokenRE = regexp.MustCompile(`^cf[ua]t_[A-Za-z0-9]{40,}$`)
+	scannableAPIKeyRE   = regexp.MustCompile(`^cfk_[A-Za-z0-9]{40,}$`)
+	legacyAPIKeyRE      = regexp.MustCompile(`^[0-9a-f]{37,45}$`)
+	legacyAPITokenRE    = regexp.MustCompile(`^[A-Za-z0-9_-]{40}$`)
+)
+
 func determineAuthType(s string) (string, error) {
-	if apiTokenMatch, _ := regexp.MatchString("[A-Za-z0-9-_]{40}", s); apiTokenMatch {
+	switch {
+	case scannableAPITokenRE.MatchString(s):
 		log.Debug("API token detected")
 		return authTypeAPIToken, nil
-	} else if apiKeyMatch, _ := regexp.MatchString("[0-9a-f]{37}", s); apiKeyMatch {
+	case scannableAPIKeyRE.MatchString(s):
 		log.Debug("API key detected")
 		return authTypeAPIKey, nil
-	} else {
+	// A 40 character lowercase hex value fits both legacy formats. Keys are
+	// always hex whereas tokens are mixed case, so favour the key.
+	case legacyAPIKeyRE.MatchString(s):
+		log.Debug("API key detected")
+		return authTypeAPIKey, nil
+	case legacyAPITokenRE.MatchString(s):
+		log.Debug("API token detected")
+		return authTypeAPIToken, nil
+	default:
 		return "", errInvalidAuthValueFormat
 	}
 }
