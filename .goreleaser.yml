@@ -2,7 +2,10 @@ version: 2
 
 builds:
   - env:
-      - CGO_ENABLED=0
+      # The macOS keychain backend is only compiled in with cgo, and darwin
+      # is built natively on macOS runners, so cgo is available there.
+      # Everything else stays statically linked.
+      - CGO_ENABLED={{ if eq .Os "darwin" }}1{{ else }}0{{ end }}
     mod_timestamp: '{{ .CommitTimestamp }}'
     flags:
       - -trimpath

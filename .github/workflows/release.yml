@@ -87,7 +87,6 @@ jobs:
       - name: Build archive
         shell: bash
         env:
-          CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
