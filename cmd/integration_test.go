@@ -364,6 +364,29 @@ func TestIntegration_Exec_ProfileNotFound(t *testing.T) {
 	}
 }
 
+// Left unchecked, an unrecognised auth_type is exported as
+// CLOUDFLARE_<AUTH_TYPE> and sent to the API as a global API key.
+func TestIntegration_Exec_UnknownAuthType(t *testing.T) {
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.typo]
+    auth_type = "api_tokens"
+`)
+	writeKeyringItem(t, keyringDir, "typo-api_tokens", []byte(testAPIToken))
+
+	result := runCfVault(t, envVars, "exec", "typo", "--", "env")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit, got 0\nstdout: %s", result.Stdout)
+	}
+	if !strings.Contains(result.Stderr, `"api_tokens"`) {
+		t.Errorf("expected error naming the auth type, got stderr=%q", result.Stderr)
+	}
+}
+
 func TestIntegration_Exec_NestedSessionRejected(t *testing.T) {
 	configDir, _, envVars, cleanup := setupTestEnv(t)
 	defer cleanup()

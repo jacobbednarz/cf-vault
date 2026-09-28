@@ -26,6 +26,9 @@ type profile struct {
 // validate reports mistakes in a profile's configuration, so they surface
 // before its secret is unlocked or the Cloudflare API is called.
 func (p profile) validate() error {
+	if p.AuthType != authTypeAPIKey && p.AuthType != authTypeAPIToken {
+		return fmt.Errorf(errFmtUnknownAuthType, p.AuthType, authTypeAPIKey, authTypeAPIToken)
+	}
 	if p.SessionDuration == "" {
 		return nil
 	}

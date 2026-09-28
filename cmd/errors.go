@@ -34,6 +34,7 @@ const (
 	errFmtInvalidSessionDurationFlag = "invalid --" + flagSessionDuration + ": %w"
 	errFmtSessionDurationTooShort    = "%q is shorter than the minimum of %s"
 	errFmtUnknownSecretBackend       = "profile %q has unknown secret_backend %q; valid values are %q, %q, or unset for keychain"
+	errFmtUnknownAuthType            = "unknown auth_type %q; valid values are %q and %q"
 	errFmtHomeDirNotFound            = "unable to find home directory: %w"
 	errFmtReadAuthValue              = "unable to read authentication value: %w"
 	errFmtDetectAuthType             = "failed to detect authentication type: %w"
