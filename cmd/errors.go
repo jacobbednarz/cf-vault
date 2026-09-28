@@ -15,6 +15,7 @@ var (
 	errEmailRequiredForAPIKey   = errors.New("--" + flagEmail + " is required when adding a global API key")
 	errAuthValueSourceRequired  = errors.New("stdin is not a terminal; pass --" + flagAuthValueStdin + " or set " + envAuthValue + " to provide the authentication value")
 	errShellNotSet              = errors.New("SHELL is not set, so there is no shell to start; pass the command to run after `--` instead")
+	errEmptyShortLivedToken     = errors.New("the short lived token was created but Cloudflare returned no value for it")
 )
 
 // Error format strings for failures that interpolate context or wrap a cause.

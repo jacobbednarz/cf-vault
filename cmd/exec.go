@@ -163,10 +163,11 @@ func runExec(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf(errFmtCreateAPIToken, err)
 		}
 
-		if shortLivedToken.Value != "" {
-			env.Set(envCloudflareAPIToken, shortLivedToken.Value)
-			env.Set(envCFAPIToken, shortLivedToken.Value)
+		if shortLivedToken.Value == "" {
+			return errEmptyShortLivedToken
 		}
+		env.Set(envCloudflareAPIToken, shortLivedToken.Value)
+		env.Set(envCFAPIToken, shortLivedToken.Value)
 
 		env.Set(envCloudflareSessionExpiry, strconv.Itoa(int(tokenExpiry.Unix())))
 	}

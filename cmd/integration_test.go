@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -568,5 +571,93 @@ func TestIntegration_Exec_ExecutableNotFound(t *testing.T) {
 	}
 	if !strings.Contains(result.Stderr, "'cf-vault-no-such-command'") {
 		t.Errorf("expected error naming the missing executable, got stderr=%q", result.Stderr)
+	}
+}
+
+// tokenCreation is a POST /user/tokens request received by the mock API.
+type tokenCreation struct {
+	header http.Header
+	body   map[string]interface{}
+}
+
+// setupShortLivedProfile returns the env for an isolated test install holding
+// a short lived token profile named "shortlived", with the Cloudflare API
+// replaced by a mock that answers token creation with tokenValue. Requests
+// the mock receives are sent on the returned channel.
+func setupShortLivedProfile(t *testing.T, tokenValue string) ([]string, <-chan tokenCreation) {
+	t.Helper()
+
+	created := make(chan tokenCreation, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/user/tokens" {
+			http.NotFound(w, r)
+			return
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		created <- tokenCreation{header: r.Header.Clone(), body: body}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":  true,
+			"errors":   []interface{}{},
+			"messages": []interface{}{},
+			"result":   map[string]interface{}{"id": "short-lived-id", "value": tokenValue},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	configDir, keyringDir, envVars, cleanup := setupTestEnv(t)
+	t.Cleanup(cleanup)
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.shortlived]
+    auth_type = "api_token"
+    session_duration = "15m"
+
+    [[profiles.shortlived.policies]]
+      effect = "allow"
+
+      [[profiles.shortlived.policies.permission_groups]]
+        id = "c8fed203ed3043cba015a93ad1616f1f"
+        name = "Zone Read"
+
+      [profiles.shortlived.policies.resources]
+        "com.cloudflare.api.account.zone.*" = "*"
+`)
+	writeKeyringItem(t, keyringDir, "shortlived-api_token", []byte(testAPIToken))
+	return append(envVars, "CLOUDFLARE_BASE_URL="+srv.URL), created
+}
+
+func TestIntegration_Exec_ShortLivedToken(t *testing.T) {
+	const shortLived = "cfut_" + testAPIToken + "0a1b2c3d"
+	envVars, created := setupShortLivedProfile(t, shortLived)
+
+	result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "CLOUDFLARE_API_TOKEN="+shortLived+"\n") {
+		t.Errorf("expected the short lived token in the environment, got:\n%s", result.Stdout)
+	}
+	if got := (<-created).header.Get("Authorization"); got != "Bearer "+testAPIToken {
+		t.Errorf("token created with Authorization %q, want the profile's token", got)
+	}
+}
+
+func TestIntegration_Exec_ShortLivedTokenWithoutValue(t *testing.T) {
+	envVars, _ := setupShortLivedProfile(t, "")
+
+	result := runCfVault(t, envVars, "exec", "shortlived", "--", "env")
+
+	if result.ExitCode == 0 {
+		t.Fatalf("expected non-zero exit when no token value is returned, got 0\nstdout: %s", result.Stdout)
+	}
+	if strings.Contains(result.Stdout, "CLOUDFLARE_VAULT_SESSION=") {
+		t.Errorf("expected the command not to run, got stdout:\n%s", result.Stdout)
 	}
 }
