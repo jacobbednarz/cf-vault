@@ -3,8 +3,10 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,33 +20,7 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/spf13/cobra"
-
-	"github.com/pelletier/go-toml"
 )
-
-type tomlConfig struct {
-	Profiles map[string]profile `toml:"profiles"`
-}
-
-type profile struct {
-	Email           string   `toml:"email"`
-	AuthType        string   `toml:"auth_type"`
-	SessionDuration string   `toml:"session_duration,omitempty"`
-	SecretBackend   string   `toml:"secret_backend,omitempty"`
-	Policies        []policy `toml:"policies,omitempty"`
-}
-
-type policy struct {
-	Effect           string                 `toml:"effect"`
-	ID               string                 `toml:"id,omitempty"`
-	PermissionGroups []permissionGroup      `toml:"permission_groups"`
-	Resources        map[string]interface{} `toml:"resources"`
-}
-
-type permissionGroup struct {
-	ID   string `toml:"id"`
-	Name string `toml:"name,omitempty"`
-}
 
 var addCmd = &cobra.Command{
 	Use:   "add [profile]",
@@ -119,27 +95,20 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	configPath := filepath.Join(configDir, configFileName)
 
-	existingConfigFileContents, err := os.ReadFile(configPath)
-	if err != nil && !os.IsNotExist(err) {
+	// A config that fails to parse must stop here: carrying on with an empty
+	// profile map would pass the existence check below and then overwrite the
+	// file, deleting every profile in it.
+	config, err := loadConfig(configPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-
-	// A config that fails to parse must stop here: carrying on with an empty
-	// profile map would pass the existence check below and then truncate the
-	// file, deleting every profile in it.
-	tomlConfigStruct := tomlConfig{}
-	if err := toml.Unmarshal(existingConfigFileContents, &tomlConfigStruct); err != nil {
-		return fmt.Errorf(errFmtParseConfigFile, configPath, err)
-	}
-
-	// If this is the first profile, initialise the map.
-	if len(tomlConfigStruct.Profiles) == 0 {
-		tomlConfigStruct.Profiles = make(map[string]profile)
+	if config.Profiles == nil {
+		config.Profiles = make(map[string]profile)
 	}
 
 	// Checked before reading any credentials so an accidental overwrite
 	// fails without the user entering (or piping) a secret for nothing.
-	if _, exists := tomlConfigStruct.Profiles[profileName]; exists && !force {
+	if _, exists := config.Profiles[profileName]; exists && !force {
 		return fmt.Errorf(errFmtProfileExists, profileName, configPath)
 	}
 
@@ -218,13 +187,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		successMessage = msgSuccessKeyring
 	}
 
-	tomlConfigStruct.Profiles[profileName] = newProfile
-	configFile, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0700)
-	if err != nil {
-		return fmt.Errorf(errFmtOpenConfigFile, configPath, err)
-	}
-	defer configFile.Close()
-	if err := toml.NewEncoder(configFile).Encode(tomlConfigStruct); err != nil {
+	config.Profiles[profileName] = newProfile
+	if err := saveConfig(configPath, config); err != nil {
 		return err
 	}
 

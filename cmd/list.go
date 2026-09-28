@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/olekukonko/tablewriter"
-	"github.com/pelletier/go-toml"
 	"github.com/spf13/cobra"
 )
 
@@ -24,13 +23,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 	configPath := filepath.Join(configDir, configFileName)
 
-	configData, err := os.ReadFile(configPath)
-	if err != nil {
-		return err
-	}
-
-	config := tomlConfig{}
-	err = toml.Unmarshal(configData, &config)
+	config, err := loadConfig(configPath)
 	if err != nil {
 		return err
 	}
