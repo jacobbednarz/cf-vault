@@ -324,7 +324,7 @@ manually building your policy (though you can if you understand the syntax!).
 
   Making the complete configuration look like:
 
-```toml
+  ```toml
   [profiles]
 
   [profiles.doco-example]
@@ -332,18 +332,18 @@ manually building your policy (though you can if you understand the syntax!).
     email = "me@example.com"
     session_duration = "15m"
 
-    [[policies]]
+    [[profiles.doco-example.policies]]
     effect = "allow"
 
-    [[policies.permission_groups]]
+    [[profiles.doco-example.policies.permission_groups]]
       id = "eb258a38ea634c86a0c89da6b27cb6b6"
       name = "Access: Apps and Policies Read"
 
-    [[policies.permission_groups]]
+    [[profiles.doco-example.policies.permission_groups]]
       id = "517b21aee92c4d89936c976ba6e4be55"
       name = "Zone Settings Read"
 
-    [[policies.permission_groups]]
+    [[profiles.doco-example.policies.permission_groups]]
       id = "c8fed203ed3043cba015a93ad1616f1f"
       name = "Zone Read"
 
