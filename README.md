@@ -148,9 +148,9 @@ $ env | grep -i cloudflare
 
 ## Non-interactive use
 
-`cf-vault add` prompts for the email address and authentication value when
-run in a terminal. For scripts and CI, provide both up front instead and
-nothing is prompted for:
+`cf-vault add` prompts for the authentication value when run in a terminal,
+then for the email address if the value is a global API key. For scripts and
+CI, provide both up front instead and nothing is prompted for:
 
 - The authentication value is read from stdin with
   `--authentication-value-stdin`, or from the `CF_VAULT_AUTH_VALUE`
