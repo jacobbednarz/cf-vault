@@ -88,6 +88,8 @@ const (
 	msgSuccessSecureEnclave   = "\nSuccess! Credentials encrypted to the Secure Enclave and are now ready for use!"
 	msgSuccessYubikey         = "\nSuccess! Credentials encrypted to a YubiKey identity and are now ready for use!"
 	msgFmtNoProfilesFound     = "no profiles found at %s\n"
+	promptFmtConfirmRemove    = "Remove profile %q and its stored credential? [y/N]: "
+	msgFmtRemoved             = "Removed profile %q. The credential is still valid at Cloudflare; revoke it in the dashboard if it is no longer needed.\n"
 	msgFmtLegacyConfigWarning = "Warning: XDG directories are configured but legacy data exists at %s. " +
 		"Consider migrating your config and keys to the new XDG-compliant locations.\n"
 	msgFmtReplacedSecretNotRemoved = "the new credential is saved, but the one it replaced could not be removed: %s"

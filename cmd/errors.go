@@ -22,6 +22,8 @@ var (
 	errOwnerAccountIDForAPIKey      = errors.New("an owner account ID is only for account API tokens; global API keys belong to a user")
 	errOwnerAccountIDForUserToken   = errors.New("--" + flagOwnerAccountID + " was passed, but the API token is owned by a user rather than an account")
 	errOwnerAccountIDRequired       = errors.New("account API tokens need the ID of the account that owns them; pass it with --" + flagOwnerAccountID)
+	errRemoveNeedsConfirmation      = errors.New("stdin is not a terminal, so removal can't be confirmed; pass --" + flagForce + " to remove the profile without confirming")
+	errRemoveNotConfirmed           = errors.New("removal not confirmed; the profile was left as it was")
 )
 
 // Error format strings for failures that interpolate context or wrap a cause.
