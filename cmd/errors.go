@@ -21,7 +21,7 @@ var (
 	errNoPoliciesForSessionDuration = errors.New("session_duration is set but the profile has no policies to create a short lived token with; add policies or remove session_duration")
 	errOwnerAccountIDForAPIKey      = errors.New("an owner account ID is only for account API tokens; global API keys belong to a user")
 	errOwnerAccountIDForUserToken   = errors.New("--" + flagOwnerAccountID + " was passed, but the API token is owned by a user rather than an account")
-	errOwnerAccountIDRequired       = errors.New("account API tokens create short lived tokens in the account that owns them; pass its ID with --" + flagOwnerAccountID)
+	errOwnerAccountIDRequired       = errors.New("account API tokens need the ID of the account that owns them; pass it with --" + flagOwnerAccountID)
 )
 
 // Error format strings for failures that interpolate context or wrap a cause.

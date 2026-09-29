@@ -46,15 +46,21 @@ func runList(cmd *cobra.Command, args []string) error {
 			emailString = profile.Email
 		}
 
+		owner := ownerUser
+		if profile.OwnerAccountID != "" {
+			owner = ownerAccount
+		}
+
 		tableData = append(tableData, []string{
 			profileName,
 			profile.AuthType,
+			owner,
 			emailString,
 		})
 	}
 
 	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Profile name", "Authentication type", "Email"})
+	table.SetHeader([]string{"Profile name", "Authentication type", "Owner", "Email"})
 	table.SetAutoWrapText(false)
 	table.SetAutoFormatHeaders(true)
 	table.SetHeaderAlignment(tablewriter.ALIGN_LEFT)

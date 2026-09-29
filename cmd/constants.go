@@ -35,6 +35,11 @@ const (
 	authTypeAPIKey   = "api_key"
 	authTypeAPIToken = "api_token"
 
+	// Credential owners shown by `list`. Only account API tokens, which are
+	// saved with the owning account's ID, are owned by an account.
+	ownerUser    = "user"
+	ownerAccount = "account"
+
 	// Predefined policy templates accepted by `--profile-template`.
 	policyTemplateReadOnly        = "read-only"
 	policyTemplateWriteEverything = "write-everything"
@@ -78,6 +83,7 @@ const (
 	// User facing, non-error output.
 	promptEmailAddress        = "Email address: "
 	promptAuthValue           = "Authentication value (API key or API token): "
+	promptOwnerAccountID      = "ID of the account that owns the API token: "
 	msgSuccessKeyring         = "\nSuccess! Credentials have been set and are now ready for use!"
 	msgSuccessSecureEnclave   = "\nSuccess! Credentials encrypted to the Secure Enclave and are now ready for use!"
 	msgSuccessYubikey         = "\nSuccess! Credentials encrypted to a YubiKey identity and are now ready for use!"

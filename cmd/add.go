@@ -85,16 +85,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	if err := validateResourceIDs("zone", zoneIDs); err != nil {
 		return err
 	}
-	if ownerAccountID != "" {
-		if err := validateResourceIDs("owner account", []string{ownerAccountID}); err != nil {
-			return err
-		}
-		for _, id := range accountIDs {
-			if id != ownerAccountID {
-				return fmt.Errorf(errFmtAccountOutsideOwner, ownerAccountID, id)
-			}
-		}
-	}
 
 	var secretBackend string
 	switch {
@@ -128,10 +118,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errFmtProfileExists, profileName, configPath)
 	}
 
-	emailAddress, authValue, authType, err := readCredentials(emailAddress, authValueFromStdin)
+	creds, err := readCredentials(credentials{email: emailAddress, ownerAccountID: ownerAccountID}, authValueFromStdin)
 	if err != nil {
 		return err
 	}
+	emailAddress, ownerAccountID, authValue, authType := creds.email, creds.ownerAccountID, creds.authValue, creds.authType
 
 	// Global API keys authenticate with the email alongside the key; API
 	// tokens carry the identity themselves.
@@ -146,8 +137,18 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return errOwnerAccountIDForAPIKey
 	case ownerAccountID != "" && strings.HasPrefix(authValue, userAPITokenPrefix):
 		return errOwnerAccountIDForUserToken
-	case ownerAccountID == "" && sessionDuration != "" && strings.HasPrefix(authValue, accountAPITokenPrefix):
+	case ownerAccountID == "" && strings.HasPrefix(authValue, accountAPITokenPrefix):
 		return errOwnerAccountIDRequired
+	}
+	if ownerAccountID != "" {
+		if err := validateResourceIDs("owner account", []string{ownerAccountID}); err != nil {
+			return err
+		}
+		for _, id := range accountIDs {
+			if id != ownerAccountID {
+				return fmt.Errorf(errFmtAccountOutsideOwner, ownerAccountID, id)
+			}
+		}
 	}
 
 	newProfile := profile{
@@ -286,39 +287,50 @@ func validatePolicyTemplate(name string) error {
 // such as a file or device piped in by mistake.
 const maxAuthValueSize = 1024
 
-// readCredentials resolves the email address, authentication value and its
-// type for a new profile. The authentication value comes from the first
+// credentials are what `add` stores for a new profile. Fields left empty by
+// the flags may be filled in from stdin, the environment or a prompt.
+type credentials struct {
+	email          string
+	ownerAccountID string
+	authValue      string
+	authType       string
+}
+
+// readCredentials completes the credentials passed as flags with the
+// authentication value and its type. The value comes from the first
 // available of:
 //
 //  1. stdin, when `--authentication-value-stdin` is set
 //  2. the CF_VAULT_AUTH_VALUE environment variable
-//  3. an interactive prompt, followed by one for the email if the value is a
-//     global API key and `--email` wasn't passed
+//  3. an interactive prompt, followed by one for whatever else that kind of
+//     credential needs and the flags didn't give
 //
 // The non-interactive sources never prompt: without a terminal there is nobody
 // to answer, and a prompt reading from piped stdin would consume the secret.
-func readCredentials(emailAddress string, fromStdin bool) (email, authValue, authType string, err error) {
+func readCredentials(flags credentials, fromStdin bool) (credentials, error) {
+	creds := flags
+	var err error
 	stdinFd := int(os.Stdin.Fd())
 	switch envValue, fromEnv := os.LookupEnv(envAuthValue); {
 	case fromStdin:
-		authValue, err = readAuthValueFromStdin()
+		creds.authValue, err = readAuthValueFromStdin()
 	case fromEnv:
-		authValue = strings.TrimSpace(envValue)
+		creds.authValue = strings.TrimSpace(envValue)
 	case term.IsTerminal(stdinFd):
 		readPassword := func() ([]byte, error) { return term.ReadPassword(stdinFd) }
-		return promptCredentials(emailAddress, readPassword, os.Stdin, os.Stdout)
+		return promptCredentials(flags, readPassword, os.Stdin, os.Stdout)
 	default:
 		err = errAuthValueSourceRequired
 	}
 	if err != nil {
-		return "", "", "", fmt.Errorf(errFmtReadAuthValue, err)
+		return credentials{}, fmt.Errorf(errFmtReadAuthValue, err)
 	}
 
-	authType, err = determineAuthType(authValue)
+	creds.authType, err = determineAuthType(creds.authValue)
 	if err != nil {
-		return "", "", "", fmt.Errorf(errFmtDetectAuthType, err)
+		return credentials{}, fmt.Errorf(errFmtDetectAuthType, err)
 	}
-	return emailAddress, authValue, authType, nil
+	return creds, nil
 }
 
 // readAuthValueFromStdin reads the authentication value piped to stdin.
@@ -341,33 +353,42 @@ func readAuthValueFromStdin() (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
-// promptCredentials asks for the authentication value, then for the email
-// address only when the value is a global API key and none was passed; API
-// tokens carry the identity themselves. readPassword reads the value without
-// echoing it and in supplies the email line, so tests can stand in for the
-// terminal.
-func promptCredentials(emailAddress string, readPassword func() ([]byte, error), in io.Reader, out io.Writer) (email, authValue, authType string, err error) {
+// promptCredentials asks for the authentication value, then for only what
+// that kind of credential needs and the flags didn't give: the email for a
+// global API key, or the owning account's ID for an account API token. Other
+// API tokens carry their identity themselves. readPassword reads the value
+// without echoing it and in supplies the other answers, so tests can stand in
+// for the terminal.
+func promptCredentials(flags credentials, readPassword func() ([]byte, error), in io.Reader, out io.Writer) (credentials, error) {
+	creds := flags
 	fmt.Fprint(out, promptAuthValue)
 	b, err := readPassword()
 	fmt.Fprintln(out)
 	if err != nil {
-		return "", "", "", fmt.Errorf(errFmtReadAuthValue, err)
+		return credentials{}, fmt.Errorf(errFmtReadAuthValue, err)
 	}
-	authValue = strings.TrimSpace(string(b))
+	creds.authValue = strings.TrimSpace(string(b))
 
-	// Classified before the email prompt, so a mistyped value fails without
-	// asking for an email that would be thrown away.
-	authType, err = determineAuthType(authValue)
+	// Classified before any follow up prompt, so a mistyped value fails
+	// without asking for answers that would be thrown away.
+	creds.authType, err = determineAuthType(creds.authValue)
 	if err != nil {
-		return "", "", "", fmt.Errorf(errFmtDetectAuthType, err)
+		return credentials{}, fmt.Errorf(errFmtDetectAuthType, err)
 	}
 
-	if authType == authTypeAPIKey && emailAddress == "" {
-		fmt.Fprint(out, promptEmailAddress)
-		line, _ := bufio.NewReader(in).ReadString('\n')
-		emailAddress = strings.TrimSpace(line)
+	answers := bufio.NewReader(in)
+	ask := func(prompt string) string {
+		fmt.Fprint(out, prompt)
+		line, _ := answers.ReadString('\n')
+		return strings.TrimSpace(line)
 	}
-	return emailAddress, authValue, authType, nil
+	switch {
+	case creds.authType == authTypeAPIKey && creds.email == "":
+		creds.email = ask(promptEmailAddress)
+	case strings.HasPrefix(creds.authValue, accountAPITokenPrefix) && creds.ownerAccountID == "":
+		creds.ownerAccountID = ask(promptOwnerAccountID)
+	}
+	return creds, nil
 }
 
 // generatePolicy builds the policies for a predefined template. Optional

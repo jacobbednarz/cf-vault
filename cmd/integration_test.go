@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -307,6 +308,49 @@ func TestIntegration_List_SortedByName(t *testing.T) {
 	}
 	if want := []string{"alpha", "bravo", "charlie", "delta", "echo"}; !slices.Equal(listed, want) {
 		t.Errorf("listed profiles %v, want %v", listed, want)
+	}
+}
+
+// TestIntegration_List_Owner checks the owner column: only a profile saved
+// with an owner account ID belongs to an account.
+func TestIntegration_List_Owner(t *testing.T) {
+	configDir, _, envVars, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeConfig(t, configDir, `
+[profiles]
+  [profiles.account-token]
+    auth_type = "api_token"
+    owner_account_id = "01a7362d577a6c3019a474fd6f485823"
+  [profiles.user-token]
+    auth_type = "api_token"
+  [profiles.global-key]
+    auth_type = "api_key"
+    email = "user@example.com"
+`)
+
+	result := runCfVault(t, envVars, "list")
+
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr: %s", result.ExitCode, result.Stderr)
+	}
+	lines := strings.Split(result.Stdout, "\n")
+	if header := strings.Fields(lines[0]); !slices.Equal(header, []string{"PROFILE", "NAME", "AUTHENTICATION", "TYPE", "OWNER", "EMAIL"}) {
+		t.Errorf("header = %v", header)
+	}
+	owners := make(map[string]string)
+	for _, line := range lines[1:] {
+		if fields := strings.Fields(line); len(fields) >= 3 {
+			owners[fields[0]] = fields[2]
+		}
+	}
+	want := map[string]string{
+		"account-token": ownerAccount,
+		"user-token":    ownerUser,
+		"global-key":    ownerUser,
+	}
+	if !maps.Equal(owners, want) {
+		t.Errorf("owners = %v, want %v", owners, want)
 	}
 }
 
