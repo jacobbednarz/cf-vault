@@ -128,14 +128,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(errFmtProfileExists, profileName, configPath)
 	}
 
-	emailAddress, authValue, err := readCredentials(emailAddress, authValueFromStdin)
+	emailAddress, authValue, authType, err := readCredentials(emailAddress, authValueFromStdin)
 	if err != nil {
-		return fmt.Errorf(errFmtReadAuthValue, err)
-	}
-
-	authType, err := determineAuthType(authValue)
-	if err != nil {
-		return fmt.Errorf(errFmtDetectAuthType, err)
+		return err
 	}
 
 	// Global API keys authenticate with the email alongside the key; API
@@ -291,57 +286,88 @@ func validatePolicyTemplate(name string) error {
 // such as a file or device piped in by mistake.
 const maxAuthValueSize = 1024
 
-// readCredentials resolves the email address and authentication value for a
-// new profile. The authentication value comes from the first available of:
+// readCredentials resolves the email address, authentication value and its
+// type for a new profile. The authentication value comes from the first
+// available of:
 //
 //  1. stdin, when `--authentication-value-stdin` is set
 //  2. the CF_VAULT_AUTH_VALUE environment variable
-//  3. an interactive prompt, along with the email if `--email` wasn't passed
+//  3. an interactive prompt, followed by one for the email if the value is a
+//     global API key and `--email` wasn't passed
 //
 // The non-interactive sources never prompt: without a terminal there is nobody
 // to answer, and a prompt reading from piped stdin would consume the secret.
-func readCredentials(emailAddress string, fromStdin bool) (string, string, error) {
-	if fromStdin {
-		// Reading a terminal to EOF would echo the secret as it is typed, with
-		// no prompt to say input is expected; the interactive prompt exists
-		// for that case.
-		if term.IsTerminal(int(os.Stdin.Fd())) {
-			return "", "", errAuthValueStdinIsTerminal
-		}
-		// Read one byte past the limit so an oversized value can be told
-		// apart from one that is exactly at it.
-		b, err := io.ReadAll(io.LimitReader(os.Stdin, maxAuthValueSize+1))
-		if err != nil {
-			return "", "", err
-		}
-		if len(b) > maxAuthValueSize {
-			return "", "", errAuthValueTooLong
-		}
-		return emailAddress, strings.TrimSpace(string(b)), nil
-	}
-
-	if authValue, ok := os.LookupEnv(envAuthValue); ok {
-		return emailAddress, strings.TrimSpace(authValue), nil
-	}
-
+func readCredentials(emailAddress string, fromStdin bool) (email, authValue, authType string, err error) {
 	stdinFd := int(os.Stdin.Fd())
-	if !term.IsTerminal(stdinFd) {
-		return "", "", errAuthValueSourceRequired
+	switch envValue, fromEnv := os.LookupEnv(envAuthValue); {
+	case fromStdin:
+		authValue, err = readAuthValueFromStdin()
+	case fromEnv:
+		authValue = strings.TrimSpace(envValue)
+	case term.IsTerminal(stdinFd):
+		readPassword := func() ([]byte, error) { return term.ReadPassword(stdinFd) }
+		return promptCredentials(emailAddress, readPassword, os.Stdin, os.Stdout)
+	default:
+		err = errAuthValueSourceRequired
+	}
+	if err != nil {
+		return "", "", "", fmt.Errorf(errFmtReadAuthValue, err)
 	}
 
-	if emailAddress == "" {
-		fmt.Print(promptEmailAddress)
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	authType, err = determineAuthType(authValue)
+	if err != nil {
+		return "", "", "", fmt.Errorf(errFmtDetectAuthType, err)
+	}
+	return emailAddress, authValue, authType, nil
+}
+
+// readAuthValueFromStdin reads the authentication value piped to stdin.
+func readAuthValueFromStdin() (string, error) {
+	// Reading a terminal to EOF would echo the secret as it is typed, with no
+	// prompt to say input is expected; the interactive prompt exists for that
+	// case.
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", errAuthValueStdinIsTerminal
+	}
+	// Read one byte past the limit so an oversized value can be told apart
+	// from one that is exactly at it.
+	b, err := io.ReadAll(io.LimitReader(os.Stdin, maxAuthValueSize+1))
+	if err != nil {
+		return "", err
+	}
+	if len(b) > maxAuthValueSize {
+		return "", errAuthValueTooLong
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// promptCredentials asks for the authentication value, then for the email
+// address only when the value is a global API key and none was passed; API
+// tokens carry the identity themselves. readPassword reads the value without
+// echoing it and in supplies the email line, so tests can stand in for the
+// terminal.
+func promptCredentials(emailAddress string, readPassword func() ([]byte, error), in io.Reader, out io.Writer) (email, authValue, authType string, err error) {
+	fmt.Fprint(out, promptAuthValue)
+	b, err := readPassword()
+	fmt.Fprintln(out)
+	if err != nil {
+		return "", "", "", fmt.Errorf(errFmtReadAuthValue, err)
+	}
+	authValue = strings.TrimSpace(string(b))
+
+	// Classified before the email prompt, so a mistyped value fails without
+	// asking for an email that would be thrown away.
+	authType, err = determineAuthType(authValue)
+	if err != nil {
+		return "", "", "", fmt.Errorf(errFmtDetectAuthType, err)
+	}
+
+	if authType == authTypeAPIKey && emailAddress == "" {
+		fmt.Fprint(out, promptEmailAddress)
+		line, _ := bufio.NewReader(in).ReadString('\n')
 		emailAddress = strings.TrimSpace(line)
 	}
-
-	fmt.Print(promptAuthValue)
-	b, err := term.ReadPassword(stdinFd)
-	fmt.Println()
-	if err != nil {
-		return "", "", err
-	}
-	return emailAddress, strings.TrimSpace(string(b)), nil
+	return emailAddress, authValue, authType, nil
 }
 
 // generatePolicy builds the policies for a predefined template. Optional

@@ -16,7 +16,7 @@ type tomlConfig struct {
 }
 
 type profile struct {
-	Email    string `toml:"email"`
+	Email    string `toml:"email,omitempty"`
 	AuthType string `toml:"auth_type"`
 	// OwnerAccountID is set when the profile's API token is owned by that
 	// account rather than a user. Short lived tokens are then created in, and
