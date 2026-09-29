@@ -74,7 +74,7 @@ func init() {
 	addCmd.RegisterFlagCompletionFunc(flagProfileTemplate, cobra.FixedCompletions(policyTemplates, cobra.ShellCompDirectiveNoFileComp))
 	addCmd.Flags().StringSliceVarP(&accountIDs, flagAccountID, "", nil, "restrict the --profile-template policies to these account IDs (repeatable)")
 	addCmd.Flags().StringSliceVarP(&zoneIDs, flagZoneID, "", nil, "restrict the --profile-template policies to these zone IDs (repeatable)")
-	addCmd.Flags().StringVarP(&ownerAccountID, flagOwnerAccountID, "", "", "ID of the account that owns the API token, when adding an account API token rather than a user one; required to create short lived tokens from it")
+	addCmd.Flags().StringVarP(&ownerAccountID, flagOwnerAccountID, "", "", "ID of the account that owns the API token, when adding an account API token rather than a user one; required for `cfat_` tokens")
 	addCmd.Flags().StringVarP(&sessionDuration, flagSessionDuration, "", "", "lifetime of the short lived tokens created by exec, such as 15m or 1h; at least "+minSessionDuration.String()+" and rounded down to whole seconds")
 	addCmd.MarkFlagsRequiredTogether(flagProfileTemplate, flagSessionDuration)
 	addCmd.Flags().BoolVarP(&secureEnclave, flagSecureEnclave, "", false, "store the credential encrypted with age to a Secure Enclave key (requires `age` and `age-plugin-se`); unlocks via Touch ID instead of the keychain password")

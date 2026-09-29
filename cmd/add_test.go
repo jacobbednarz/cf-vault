@@ -1013,6 +1013,10 @@ func TestIntegration_Add_OwnerAccountIDRejected(t *testing.T) {
 			flags:  []string{"--" + flagOwnerAccountID, testOwnerAccountID},
 			want:   errOwnerAccountIDForUserToken.Error(),
 		},
+		"missing for an account API token": {
+			secret: testAccountAPIToken,
+			want:   errOwnerAccountIDRequired.Error(),
+		},
 		"missing for a short lived account API token": {
 			secret: testAccountAPIToken,
 			flags:  template,
@@ -1112,56 +1116,64 @@ func TestIntegration_Add_AccountAPITokenTemplate(t *testing.T) {
 }
 
 // TestPromptCredentials drives the interactive `add` prompts: the value is
-// always asked for first, and the email only for global API keys that weren't
-// given one with --email. Comparing the whole output pins the prompt order.
+// always asked for first, then only what that kind of credential needs and
+// the flags didn't give. Comparing the whole output pins the prompt order.
 func TestPromptCredentials(t *testing.T) {
 	body := "abcdefghijklmnopqrstuvwxyzABCDEF12345678" // 40 chars
+	userToken := userAPITokenPrefix + body + "0a1b2c3d"
+	accountToken := accountAPITokenPrefix + body + "0a1b2c3d"
+	scannableKey := "cfk_" + body + "0a1b2c3d"
 	valuePrompt := promptAuthValue + "\n"
 	const typedEmail = "jacob@example.com"
+	flagEmail := credentials{email: "flag@example.com"}
+	flagOwner := credentials{ownerAccountID: testOwnerAccountID}
 
 	tests := map[string]struct {
-		value         string
-		flagEmail     string
-		wantType      string
-		wantEmail     string
-		wantOut       string
-		wantEmailRead bool
+		value          string
+		flags          credentials
+		typed          string
+		want           credentials
+		wantOut        string
+		wantAnswerRead bool
 	}{
-		"user token":         {value: "cfut_" + body + "0a1b2c3d", wantType: authTypeAPIToken, wantOut: valuePrompt},
-		"account token":      {value: "cfat_" + body + "0a1b2c3d", wantType: authTypeAPIToken, wantOut: valuePrompt},
-		"legacy token":       {value: testAPIToken, wantType: authTypeAPIToken, wantOut: valuePrompt},
-		"token with --email": {value: "cfut_" + body + "0a1b2c3d", flagEmail: "flag@example.com", wantType: authTypeAPIToken, wantEmail: "flag@example.com", wantOut: valuePrompt},
-		"scannable key":      {value: "cfk_" + body + "0a1b2c3d", wantType: authTypeAPIKey, wantEmail: typedEmail, wantOut: valuePrompt + promptEmailAddress, wantEmailRead: true},
-		"legacy key":         {value: testAPIKey, wantType: authTypeAPIKey, wantEmail: typedEmail, wantOut: valuePrompt + promptEmailAddress, wantEmailRead: true},
-		"key with --email":   {value: "cfk_" + body + "0a1b2c3d", flagEmail: "flag@example.com", wantType: authTypeAPIKey, wantEmail: "flag@example.com", wantOut: valuePrompt},
-		"surrounding spaces": {value: "  " + testAPIKey + " \t", wantType: authTypeAPIKey, wantEmail: typedEmail, wantOut: valuePrompt + promptEmailAddress, wantEmailRead: true},
+		"user token":             {value: userToken, want: credentials{authType: authTypeAPIToken}, wantOut: valuePrompt},
+		"legacy token":           {value: testAPIToken, want: credentials{authType: authTypeAPIToken}, wantOut: valuePrompt},
+		"token with --email":     {value: userToken, flags: flagEmail, want: credentials{email: "flag@example.com", authType: authTypeAPIToken}, wantOut: valuePrompt},
+		"account token":          {value: accountToken, typed: testOwnerAccountID, want: credentials{ownerAccountID: testOwnerAccountID, authType: authTypeAPIToken}, wantOut: valuePrompt + promptOwnerAccountID, wantAnswerRead: true},
+		"account token with ID":  {value: accountToken, flags: flagOwner, want: credentials{ownerAccountID: testOwnerAccountID, authType: authTypeAPIToken}, wantOut: valuePrompt},
+		"legacy token with ID":   {value: testAPIToken, flags: flagOwner, want: credentials{ownerAccountID: testOwnerAccountID, authType: authTypeAPIToken}, wantOut: valuePrompt},
+		"scannable key":          {value: scannableKey, typed: typedEmail, want: credentials{email: typedEmail, authType: authTypeAPIKey}, wantOut: valuePrompt + promptEmailAddress, wantAnswerRead: true},
+		"legacy key":             {value: testAPIKey, typed: typedEmail, want: credentials{email: typedEmail, authType: authTypeAPIKey}, wantOut: valuePrompt + promptEmailAddress, wantAnswerRead: true},
+		"key with --email":       {value: scannableKey, flags: flagEmail, want: credentials{email: "flag@example.com", authType: authTypeAPIKey}, wantOut: valuePrompt},
+		"surrounding whitespace": {value: "  " + testAPIKey + " \t", typed: typedEmail, want: credentials{email: typedEmail, authType: authTypeAPIKey}, wantOut: valuePrompt + promptEmailAddress, wantAnswerRead: true},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			in := strings.NewReader("  " + typedEmail + " \n")
+			in := strings.NewReader("  " + tt.typed + " \n")
 			var out strings.Builder
 			readPassword := func() ([]byte, error) { return []byte(tt.value), nil }
 
-			email, value, authType, err := promptCredentials(tt.flagEmail, readPassword, in, &out)
+			got, err := promptCredentials(tt.flags, readPassword, in, &out)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if value != strings.TrimSpace(tt.value) || authType != tt.wantType || email != tt.wantEmail {
-				t.Errorf("got value=%q type=%q email=%q, want value=%q type=%q email=%q",
-					value, authType, email, strings.TrimSpace(tt.value), tt.wantType, tt.wantEmail)
+			want := tt.want
+			want.authValue = strings.TrimSpace(tt.value)
+			if got != want {
+				t.Errorf("got %+v, want %+v", got, want)
 			}
 			if out.String() != tt.wantOut {
 				t.Errorf("output = %q, want %q", out.String(), tt.wantOut)
 			}
-			if emailRead := in.Len() == 0; emailRead != tt.wantEmailRead {
-				t.Errorf("email line read = %v, want %v", emailRead, tt.wantEmailRead)
+			if answerRead := in.Len() == 0; answerRead != tt.wantAnswerRead {
+				t.Errorf("answer line read = %v, want %v", answerRead, tt.wantAnswerRead)
 			}
 		})
 	}
 }
 
 // TestPromptCredentials_Errors checks a value that can't be read or
-// classified fails before the email is asked for.
+// classified fails before any follow up prompt.
 func TestPromptCredentials_Errors(t *testing.T) {
 	errRead := errors.New("terminal went away")
 	tests := map[string]struct {
@@ -1176,12 +1188,12 @@ func TestPromptCredentials_Errors(t *testing.T) {
 			in := strings.NewReader("jacob@example.com\n")
 			var out strings.Builder
 
-			_, _, _, err := promptCredentials("", tt.readPassword, in, &out)
+			_, err := promptCredentials(credentials{}, tt.readPassword, in, &out)
 			if !errors.Is(err, tt.want) {
 				t.Fatalf("err = %v, want %v", err, tt.want)
 			}
-			if strings.Contains(out.String(), promptEmailAddress) || in.Len() == 0 {
-				t.Errorf("expected no email prompt, got output=%q", out.String())
+			if out.String() != promptAuthValue+"\n" || in.Len() == 0 {
+				t.Errorf("expected no follow up prompt, got output=%q", out.String())
 			}
 		})
 	}

@@ -252,7 +252,8 @@ Examples:
 
 [Account API tokens] belong to an account rather than a user, so they keep
 working after the person who created them leaves. Add one by passing the ID
-of the account that owns it with `--owner-account-id`:
+of the account that owns it with `--owner-account-id`, or type it in when
+`add` asks for it after a `cfat_` token:
 
 ```shell
 $ printf '%s' "$TOKEN" | cf-vault add ci --authentication-value-stdin --owner-account-id 01a7362d577a6c3019a474fd6f485823
@@ -267,10 +268,11 @@ can only reach its own account, so with `--profile-template`:
 - `--account-id` may only name the owning account; and
 - there are no user permissions, as there is no user.
 
-The flag is the only thing that makes a profile an account token profile;
-without it a token is treated as a user's. As a safeguard, a `cfat_` token
-needs `--owner-account-id` before short lived tokens can be created from it,
-and a `cfut_` token is refused with the flag.
+The ID is the only thing that makes a profile an account token profile, and
+`cf-vault list` shows such profiles with an `account` owner. A `cfat_` token
+can't be added without it, and a `cfut_` token is refused with the flag.
+Legacy tokens don't say who owns them, so without the flag they are treated
+as a user's.
 
 ## Generating token policies
 
