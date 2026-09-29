@@ -83,6 +83,7 @@ func init() {
 	addCmd.Flags().StringVarP(&emailAddress, flagEmail, "", "", "email address of the account; required for global API keys")
 	addCmd.Flags().BoolVarP(&authValueFromStdin, flagAuthValueStdin, "", false, "read the authentication value (API key or API token) from stdin instead of prompting; alternatively set "+envAuthValue)
 	addCmd.Flags().BoolVarP(&force, flagForce, "", false, "overwrite the profile if it already exists")
+	removeCmd.Flags().BoolVarP(&force, flagForce, "", false, "remove the profile without asking for confirmation")
 
 	// Everything after the profile name is the command to run, flags included.
 	execCmd.Flags().SetInterspersed(false)
@@ -90,6 +91,7 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(execCmd)
+	rootCmd.AddCommand(removeCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

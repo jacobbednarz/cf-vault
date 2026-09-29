@@ -146,6 +146,23 @@ $ env | grep -i cloudflare
 # => no results
 ```
 
+## Removing profiles
+
+`cf-vault remove` (or `cf-vault rm`) deletes a profile from the config along
+with its stored credential, whether that is in the keychain, the file keyring
+or an encrypted `secrets/<profile>.age` file. It asks for confirmation first,
+and `--force` skips the prompt. Outside a terminal, where there is nobody to
+ask, `--force` is required.
+
+```shell
+$ cf-vault remove work
+Remove profile "work" and its stored credential? [y/N]: y
+Removed profile "work". The credential is still valid at Cloudflare; revoke it in the dashboard if it is no longer needed.
+```
+
+Removing a profile only forgets the credential locally. Revoke the API token,
+or roll the global API key, in the Cloudflare dashboard to stop it working.
+
 ## Non-interactive use
 
 `cf-vault add` prompts for the authentication value when run in a terminal,
