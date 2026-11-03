@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // TestNewClient_SendsOnlyProfileCredentials guards against the SDK's habit of
@@ -55,5 +58,50 @@ func TestNewClient_SendsOnlyProfileCredentials(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestNewClient_BoundsRetries guards against the SDK's default of retrying a
+// failing request ten times with up to 30 seconds between attempts, which
+// leaves the command hanging for minutes when the API is having trouble.
+func TestNewClient_BoundsRetries(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		// Retry immediately so the test doesn't wait out the backoff.
+		w.Header().Set("Retry-After-Ms", "0")
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("CLOUDFLARE_BASE_URL", srv.URL)
+
+	if _, err := newClient("profile-token", authTypeAPIToken, "").User.Get(context.Background()); err == nil {
+		t.Fatal("expected an error from a failing API, got nil")
+	}
+	if got, want := attempts.Load(), int32(1+apiMaxRetries); got != want {
+		t.Errorf("attempts = %d, want %d", got, want)
+	}
+}
+
+// TestCreateToken_StopsAtDeadline guards apiTimeout's assumption that the SDK
+// gives up on a retry, however long the API asks it to wait, once the
+// context's deadline passes.
+func TestCreateToken_StopsAtDeadline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "3600")
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("CLOUDFLARE_BASE_URL", srv.URL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := createToken(ctx, newClient("profile-token", authTypeAPIToken, ""), "", "name", time.Now().Add(time.Hour), nil)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want %v", err, context.DeadlineExceeded)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("createToken returned after %s, long after the deadline", elapsed)
 	}
 }

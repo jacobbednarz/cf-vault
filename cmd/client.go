@@ -11,6 +11,16 @@ import (
 	"github.com/cloudflare/cloudflare-go/v6/user"
 )
 
+// apiMaxRetries replaces the SDK's default of ten retries, whose backoff
+// grows to 30 seconds between attempts and would leave the command hanging
+// for minutes while the API is having trouble.
+const apiMaxRetries = 2
+
+// apiTimeout bounds a command's calls to the Cloudflare API, retries and their
+// backoff included. The SDK has no timeout of its own and waits out a
+// Retry-After of any length.
+const apiTimeout = 15 * time.Second
+
 // newClient constructs a cloudflare-go/v6 client from the stored auth credentials.
 func newClient(authValue, authType, email string) *cloudflare.Client {
 	// The SDK also authenticates with any credentials exported as CLOUDFLARE_*
@@ -21,6 +31,7 @@ func newClient(authValue, authType, email string) *cloudflare.Client {
 		option.WithHeaderDel("X-Auth-Key"),
 		option.WithHeaderDel("X-Auth-Email"),
 		option.WithHeaderDel("X-Auth-User-Service-Key"),
+		option.WithMaxRetries(apiMaxRetries),
 	}
 	if authType == authTypeAPIToken {
 		return cloudflare.NewClient(append(opts, option.WithAPIToken(authValue))...)

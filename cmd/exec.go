@@ -160,7 +160,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 		tokenExpiry := time.Now().UTC().Truncate(time.Second).Add(parsedSessionDuration.Truncate(time.Second))
 
 		name := fmt.Sprintf("%s-%d", projectName, tokenExpiry.Unix())
-		shortLivedToken, err := createToken(context.Background(), cfClient, profile.OwnerAccountID, name, tokenExpiry, tokenPolicies)
+		ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+		shortLivedToken, err := createToken(ctx, cfClient, profile.OwnerAccountID, name, tokenExpiry, tokenPolicies)
+		cancel()
 		if err != nil {
 			return fmt.Errorf(errFmtCreateAPIToken, err)
 		}
