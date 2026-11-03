@@ -284,7 +284,6 @@ func TestGeneratePolicy_ReadOnly(t *testing.T) {
 		t.Fatalf("expected 3 policies, got %d", len(policies))
 	}
 
-	// Each policy must contain only Read groups.
 	for _, p := range policies {
 		for _, g := range p.PermissionGroups {
 			if !strings.Contains(g.Name, "Read") {
@@ -293,7 +292,6 @@ func TestGeneratePolicy_ReadOnly(t *testing.T) {
 		}
 	}
 
-	// Verify resource strings.
 	wantResources := []string{
 		"com.cloudflare.api.account.*",
 		"com.cloudflare.api.account.zone.*",
@@ -305,7 +303,6 @@ func TestGeneratePolicy_ReadOnly(t *testing.T) {
 		}
 	}
 
-	// R2 group must not appear in any policy.
 	for _, p := range policies {
 		for _, g := range p.PermissionGroups {
 			if g.ID == "r2-read" {
@@ -327,7 +324,6 @@ func TestGeneratePolicy_WriteEverything(t *testing.T) {
 		t.Fatalf("expected 3 policies, got %d", len(policies))
 	}
 
-	// Every policy bucket must be non-empty and contain at least one Write group.
 	for i, p := range policies {
 		if len(p.PermissionGroups) == 0 {
 			t.Errorf("policy[%d] has no permission groups", i)
@@ -969,7 +965,6 @@ func TestGeneratePolicy_EmptyAccountBucket(t *testing.T) {
 }
 
 func TestGeneratePolicy_APIError(t *testing.T) {
-	// Server returns 500 for any request.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}))
