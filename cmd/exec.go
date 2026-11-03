@@ -12,8 +12,8 @@ import (
 
 	"os/exec"
 
-	"github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/shared"
+	"github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/shared"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )

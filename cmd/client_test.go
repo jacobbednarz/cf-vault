@@ -61,9 +61,9 @@ func TestNewClient_SendsOnlyProfileCredentials(t *testing.T) {
 	}
 }
 
-// TestNewClient_BoundsRetries guards against the SDK's default of retrying a
-// failing request ten times with up to 30 seconds between attempts, which
-// leaves the command hanging for minutes when the API is having trouble.
+// TestNewClient_BoundsRetries pins the SDK's default of two retries. v6
+// defaulted to ten, with backoff growing to 30 seconds between attempts, which
+// left the command hanging for minutes when the API was having trouble.
 func TestNewClient_BoundsRetries(t *testing.T) {
 	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +78,7 @@ func TestNewClient_BoundsRetries(t *testing.T) {
 	if _, err := newClient("profile-token", authTypeAPIToken, "").User.Get(context.Background()); err == nil {
 		t.Fatal("expected an error from a failing API, got nil")
 	}
-	if got, want := attempts.Load(), int32(1+apiMaxRetries); got != want {
+	if got, want := attempts.Load(), int32(3); got != want {
 		t.Errorf("attempts = %d, want %d", got, want)
 	}
 }
