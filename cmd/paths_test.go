@@ -51,7 +51,6 @@ func TestResolveConfigDir_XDG(t *testing.T) {
 }
 
 func TestResolveConfigDir_XDG_WarnIfLegacyExists(t *testing.T) {
-	// Create a temp dir to act as HOME, with a legacy .cf-vault subdir inside it.
 	tmpHome, err := os.MkdirTemp("", "cf-vault-home-*")
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +74,6 @@ func TestResolveConfigDir_XDG_WarnIfLegacyExists(t *testing.T) {
 	os.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
 	defer os.Unsetenv("XDG_CONFIG_HOME")
 
-	// Capture stderr.
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w

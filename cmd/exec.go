@@ -84,7 +84,6 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Don't allow nesting of cf-vault sessions, it gets messy.
 	if os.Getenv(envVaultSession) != "" {
 		return errNestedSession
 	}
@@ -134,7 +133,6 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	env.Set(envVaultSession, profileName)
 
-	// Not using short lived tokens so set the static API token or API key.
 	if profile.SessionDuration == "" {
 		if profile.AuthType == authTypeAPIKey {
 			env.Set(envCloudflareEmail, profile.Email)
@@ -176,8 +174,6 @@ func runExec(cmd *cobra.Command, args []string) error {
 		env.Set(envCloudflareSessionExpiry, strconv.Itoa(int(tokenExpiry.Unix())))
 	}
 
-	// Should a command not be provided, drop into a fresh shell with the
-	// credentials populated alongside the existing env.
 	if len(command) == 0 {
 		shell := os.Getenv(envShell)
 		if shell == "" {

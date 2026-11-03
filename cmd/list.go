@@ -39,8 +39,6 @@ func runList(cmd *cobra.Command, args []string) error {
 	tableData := make([][]string, 0, len(names))
 	for _, profileName := range names {
 		profile := config.Profiles[profileName]
-		// Only display the email if we're using API tokens otherwise the value is
-		// not used and pretty superfluous.
 		var emailString string
 		if profile.AuthType == authTypeAPIKey {
 			emailString = profile.Email

@@ -190,7 +190,6 @@ func TestIntegration_List_NoProfiles(t *testing.T) {
 	configDir, _, envVars, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	// Write a config file with no profiles section.
 	writeConfig(t, configDir, "")
 
 	result := runCfVault(t, envVars, "list")
@@ -252,7 +251,6 @@ func TestIntegration_List_APITokenProfile(t *testing.T) {
 	if !strings.Contains(result.Stdout, "api_token") {
 		t.Errorf("expected 'api_token' in output, got: %q", result.Stdout)
 	}
-	// Email should NOT appear for api_token profiles.
 	if strings.Contains(result.Stdout, "token@example.com") {
 		t.Errorf("email should not appear for api_token profile, got: %q", result.Stdout)
 	}
@@ -530,7 +528,6 @@ func TestIntegration_Exec_APIKey(t *testing.T) {
     auth_type = "api_key"
 `)
 
-	// Pre-populate the keyring. Key = "{profileName}-{authType}"
 	writeKeyringItem(t, keyringDir, "testprofile-api_key", []byte("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f"))
 
 	result := runCfVault(t, envVars, "exec", "testprofile", "--", "env")
@@ -574,7 +571,6 @@ func TestIntegration_Exec_APIToken(t *testing.T) {
     auth_type = "api_token"
 `)
 
-	// A valid 40-char API token value.
 	writeKeyringItem(t, keyringDir, "tokenprofile-api_token", []byte("abcdefghijklmnopqrstuvwxyzABCDEF12345678"))
 
 	result := runCfVault(t, envVars, "exec", "tokenprofile", "--", "env")
@@ -589,7 +585,6 @@ func TestIntegration_Exec_APIToken(t *testing.T) {
 	if !strings.Contains(result.Stdout, "CF_API_TOKEN=abcdefghijklmnopqrstuvwxyzABCDEF12345678") {
 		t.Errorf("expected CF_API_TOKEN with correct value in output, got:\n%s", result.Stdout)
 	}
-	// Email should NOT be set for api_token profiles.
 	if strings.Contains(result.Stdout, "CLOUDFLARE_EMAIL=") {
 		t.Errorf("CLOUDFLARE_EMAIL should not be set for api_token profile, got:\n%s", result.Stdout)
 	}
