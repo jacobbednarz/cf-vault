@@ -160,8 +160,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	if profileTemplate != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+		defer cancel()
 		cfClient := newClient(authValue, authType, emailAddress)
-		generatedPolicy, err := generatePolicy(context.Background(), cfClient, profileTemplate, ownerAccountID, accountIDs, zoneIDs)
+		generatedPolicy, err := generatePolicy(ctx, cfClient, profileTemplate, ownerAccountID, accountIDs, zoneIDs)
 		if err != nil {
 			return err
 		}
