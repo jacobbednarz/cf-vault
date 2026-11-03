@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	cloudflare "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/option"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/option"
 	"github.com/pelletier/go-toml"
 )
 
