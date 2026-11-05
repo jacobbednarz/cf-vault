@@ -3,12 +3,63 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+	"time"
+
+	"github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/shared"
 )
 
 var savedConfig = tomlConfig{Profiles: map[string]profile{
 	"work": {AuthType: authTypeAPIToken},
 }}
+
+func TestProfilePrepare(t *testing.T) {
+	wantPolicies := []shared.TokenPolicyParam{{
+		Effect: cloudflare.F(shared.TokenPolicyEffectAllow),
+		PermissionGroups: cloudflare.F([]shared.TokenPolicyPermissionGroupParam{{
+			ID: cloudflare.F("zone-read"),
+		}}),
+		Resources: cloudflare.F[shared.TokenPolicyResourcesUnionParam](shared.TokenPolicyResourcesIAMResourcesTypeObjectStringParam{
+			policyResourceAllZones: "*",
+		}),
+	}}
+	tests := map[string]struct {
+		profile  profile
+		duration time.Duration
+		policies []shared.TokenPolicyParam
+	}{
+		"long_lived_key": {profile: profile{AuthType: authTypeAPIKey}},
+		"long_lived_token_ignores_unused_policies": {
+			profile: profile{AuthType: authTypeAPIToken, Policies: []policy{{Effect: "unused"}}},
+		},
+		"short_lived_token": {
+			profile: profile{
+				AuthType:        authTypeAPIToken,
+				SessionDuration: "15m500ms",
+				Policies: []policy{{
+					Effect:           policyEffectAllow,
+					PermissionGroups: []permissionGroup{{ID: "zone-read", Name: "Zone Read"}},
+					Resources:        map[string]interface{}{policyResourceAllZones: "*"},
+				}},
+			},
+			duration: 15*time.Minute + 500*time.Millisecond,
+			policies: wantPolicies,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			duration, policies, err := tt.profile.prepare()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if duration != tt.duration || !reflect.DeepEqual(policies, tt.policies) {
+				t.Errorf("got (%s, %#v), want (%s, %#v)", duration, policies, tt.duration, tt.policies)
+			}
+		})
+	}
+}
 
 func TestSaveConfig_OnlyOwnerCanRead(t *testing.T) {
 	for name, existing := range map[string]bool{"new file": false, "replacing a 0700 file": true} {

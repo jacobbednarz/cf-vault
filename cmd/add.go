@@ -532,5 +532,10 @@ func filterAPITokensGroups(groups []permissionGroup) []permissionGroup {
 // in its name is read-only; the few read-only groups named otherwise, such as
 // "Security Center Insights", are left out of the read-only template.
 func isReadGroup(g permissionGroup) bool {
-	return slices.Contains(strings.Fields(g.Name), "Read")
+	for word := range strings.FieldsSeq(g.Name) {
+		if word == "Read" {
+			return true
+		}
+	}
+	return false
 }

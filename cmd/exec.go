@@ -118,7 +118,8 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if !ok {
 		return fmt.Errorf(errFmtProfileNotFound, profileName, configPath)
 	}
-	if err := profile.validate(); err != nil {
+	parsedSessionDuration, tokenPolicies, err := profile.prepare()
+	if err != nil {
 		return fmt.Errorf(errFmtInvalidProfile, profileName, configPath, err)
 	}
 
@@ -143,15 +144,6 @@ func runExec(cmd *cobra.Command, args []string) error {
 	} else {
 		cfClient := newClient(string(secret), profile.AuthType, profile.Email)
 
-		tokenPolicies, err := profile.tokenPolicies()
-		if err != nil {
-			return err
-		}
-
-		parsedSessionDuration, err := parseSessionDuration(profile.SessionDuration)
-		if err != nil {
-			return err
-		}
 		// Without not_before the token is valid from the moment Cloudflare
 		// creates it; one taken from the local clock would not be valid yet
 		// whenever that clock runs ahead of Cloudflare's.

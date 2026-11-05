@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cloudflare/cloudflare-go/v7/shared"
 	"github.com/pelletier/go-toml"
 )
 
@@ -27,32 +28,33 @@ type profile struct {
 	Policies        []policy `toml:"policies,omitempty"`
 }
 
-// validate reports mistakes in a profile's configuration, so they surface
-// before its secret is unlocked or the Cloudflare API is called.
-func (p profile) validate() error {
+// prepare validates the profile before its secret is unlocked and returns the
+// token parameters so creating a short lived token needn't repeat that work.
+func (p profile) prepare() (time.Duration, []shared.TokenPolicyParam, error) {
 	if p.AuthType != authTypeAPIKey && p.AuthType != authTypeAPIToken {
-		return fmt.Errorf(errFmtUnknownAuthType, p.AuthType, authTypeAPIKey, authTypeAPIToken)
+		return 0, nil, fmt.Errorf(errFmtUnknownAuthType, p.AuthType, authTypeAPIKey, authTypeAPIToken)
 	}
 	if p.OwnerAccountID != "" {
 		if p.AuthType == authTypeAPIKey {
-			return errOwnerAccountIDForAPIKey
+			return 0, nil, errOwnerAccountIDForAPIKey
 		}
 		// The ID becomes part of the API path tokens are created at.
 		if err := validateResourceIDs("owner account", []string{p.OwnerAccountID}); err != nil {
-			return err
+			return 0, nil, err
 		}
 	}
 	if p.SessionDuration == "" {
-		return nil
+		return 0, nil, nil
 	}
-	if _, err := parseSessionDuration(p.SessionDuration); err != nil {
-		return fmt.Errorf(errFmtInvalidSessionDuration, err)
+	duration, err := parseSessionDuration(p.SessionDuration)
+	if err != nil {
+		return 0, nil, fmt.Errorf(errFmtInvalidSessionDuration, err)
 	}
 	if len(p.Policies) == 0 {
-		return errNoPoliciesForSessionDuration
+		return 0, nil, errNoPoliciesForSessionDuration
 	}
-	_, err := p.tokenPolicies()
-	return err
+	policies, err := p.tokenPolicies()
+	return duration, policies, err
 }
 
 // minSessionDuration is the shortest short lived token lifetime accepted. A
