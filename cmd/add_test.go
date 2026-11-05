@@ -190,6 +190,30 @@ func TestFilterReadGroups_Empty(t *testing.T) {
 	}
 }
 
+func TestIsReadGroup(t *testing.T) {
+	tests := map[string]struct {
+		name string
+		want bool
+	}{
+		"empty":              {"", false},
+		"read_only":          {"Read", true},
+		"read_first":         {"Read DNS", true},
+		"read_last":          {"DNS Read", true},
+		"read_inside_word":   {"DNS Readiness Write", false},
+		"read_with_suffix":   {"DNS Read-Only", false},
+		"lowercase":          {"DNS read", false},
+		"ascii_whitespace":   {"DNS\tRead\n", true},
+		"unicode_whitespace": {"DNS\u2003Read", true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := isReadGroup(permissionGroup{Name: tt.name}); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // mockPermGroup is a minimal struct matching Cloudflare API permission group shape.
 type mockPermGroup struct {
 	ID     string   `json:"id"`
